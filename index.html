@@ -103,6 +103,11 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--sunk)}
 .legend{display:flex;gap:6px 14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:5px}
 .legend label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+table.heat td.hc{text-align:center;font-variant-numeric:tabular-nums;font-size:12px;padding:6px 6px;border-left:1px solid var(--surface)}
+table.heat td.hc.best{outline:2px solid var(--ink);outline-offset:-2px;font-weight:700}
+table.heat td.na{color:var(--muted);text-align:center}
+.rank{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;background:var(--sunk);color:var(--muted);margin-right:6px}
+.rank.r1{background:var(--accent);color:var(--accent-ink)}
 .ovr input{width:120px}
 .ovr input.set{border-color:var(--accent);background:var(--accent-soft)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:5px;font-size:13px;z-index:20;max-width:90vw}
@@ -125,6 +130,7 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--sunk)}
     <a href="#ringkasan" data-tab="ringkasan">Ringkasan</a>
     <a href="#simulasi" data-tab="simulasi">Simulasi</a>
     <a href="#jarak" data-tab="jarak">Analisa Jarak</a>
+    <a href="#fleet" data-tab="fleet">Fleet Terbaik</a>
     <a href="#data" data-tab="data">Data &amp; Parameter</a>
   </nav>
 
@@ -205,6 +211,33 @@ tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--sunk)}
     </div>
   </section>
 
+  <!-- FLEET TERBAIK -->
+  <section data-view="fleet" class="view" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>Rekomendasi fleet</h2><span class="small muted">Semua kombinasi loader × hauler di Match Factor dihitung otomatis untuk setiap jarak</span></div>
+      <div class="row">
+        <div class="field"><label class="label" for="f-mat">Material</label><select id="f-mat"></select></div>
+        <div class="field"><label class="label" for="f-ewh">Plan EWH (jam/hari)</label><input type="number" id="f-ewh" min="0" step="0.5" style="width:110px"></div>
+        <div class="field"><label class="label" for="f-dozer">Dozer (EGI)</label><input id="f-dozer" list="egi-list" style="width:140px"></div>
+        <div class="field"><label class="label" for="f-dqty">Qty dozer</label><input type="number" id="f-dqty" min="0" step="1" style="width:80px"></div>
+        <div class="field"><label class="label" for="f-step">Interval jarak</label><select id="f-step"><option value="100">100 m</option><option value="250">250 m</option><option value="500" selected>500 m</option><option value="1000">1.000 m</option></select></div>
+        <label class="small" style="padding-bottom:7px"><input type="checkbox" id="f-hide" checked> Sembunyikan fleet yang datanya belum lengkap</label>
+      </div>
+    </div>
+    <div class="kpis" id="fleet-kpis"></div>
+    <div class="panel">
+      <div class="panel-head"><h2>Fleet termurah per jarak</h2><span class="small muted">Peringkat berdasarkan total Cost/BCM (loading + hauling + dozing)</span></div>
+      <div class="tbl-wrap"><table id="fleet-best"></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Peta Cost/BCM</h2>
+        <div class="legend"><span><i style="background:color-mix(in srgb,var(--good) 45%,var(--surface))"></i>Termurah di jarak itu</span><span><i style="background:color-mix(in srgb,var(--bad) 45%,var(--surface))"></i>Termahal</span><span><i style="background:var(--surface);outline:2px solid var(--ink)"></i>Pilihan terbaik</span></div></div>
+      <div class="tbl-wrap"><table id="fleet-map" class="heat"></table></div>
+      <div class="small muted">Angka dalam ribu Rupiah per BCM. Warna dibandingkan antar-fleet pada jarak yang sama (per kolom).</div>
+    </div>
+    <div id="fleet-missing" class="small muted"></div>
+  </section>
+
   <!-- DATA -->
   <section data-view="data" class="view" hidden>
     <div class="grid2">
@@ -282,7 +315,7 @@ const store=(()=>{let dbp=null;const mem={};
 
 // ================= state =================
 // Tarif & harga sengaja kosong: terisi dari sheet Simulasi saat Excel diimpor, atau diisi manual.
-const DEFAULT_PARAMS={fuelPrice:null,waste:null,wasteOver:null,mud:null,mudOver:null,coalGet:null,coalHaul:null,coalOver:null,targetMargin:0.15,baseDist:1000,rmMonths:null,mpRate:null,dozerRatio:0.5};
+const DEFAULT_PARAMS={fuelPrice:null,waste:null,wasteOver:null,mud:null,mudOver:null,coalGet:null,coalHaul:null,coalOver:null,targetMargin:0.15,baseDist:1000,rmMonths:null,mpRate:null,dozerRatio:0.5,coalDensity:1.3};
 const S={data:null,params:{...DEFAULT_PARAMS},excelParams:null,scenarios:[],overrides:{},sel:null,distSel:null,tab:"ringkasan"};
 let saveT=null;
 function persist(){clearTimeout(saveT);saveT=setTimeout(()=>{store.set("params",S.params);store.set("scenarios",S.scenarios);store.set("overrides",S.overrides);store.set("excelParams",S.excelParams);},300);}
@@ -395,6 +428,7 @@ function parseWorkbook(wb){
 // ================= derived lookups =================
 let IDX=null;
 function buildIndex(){
+  Object.keys(aliasCache).forEach(k=>delete aliasCache[k]);
   const D=S.data;if(!D){IDX=null;return;}
   const e={};const get=n=>{const k=norm(n);return e[k]||(e[k]={name:String(n).trim(),units:0,type:"",fcV:[],rmV:[],owV:[]});};
   D.units.forEach(u=>{const x=get(u.model);x.units++;if(!x.type)x.type=u.type;});
@@ -403,11 +437,21 @@ function buildIndex(){
   D.rm.rows.forEach(u=>{if(u.total>0)get(u.egi).rmV.push(u.total);});
   const mats=new Set(),loaders={};Object.values(D.mf).forEach(m=>{mats.add(m.material);loaders[norm(m.loader)]=m.loader;});
   IDX={egi:e,mats:[...mats].sort(),loaders:Object.values(loaders).sort()};
+  $("egi-list").innerHTML=Object.values(e).map(x=>`<option value="${esc(x.name)}">${esc(x.type||"")}</option>`).join("");
 }
 function months(){return S.params.rmMonths||S.data?.rm?.monthsWithData||9;}
 function mpRate(){return S.params.mpRate!=null?S.params.mpRate:(S.data?.mpRate??0);}
+// Nama EGI di Match Factor kadang lebih pendek dari di POP Unit (mis. "EC950" vs "EC950EL").
+// Dicocokkan otomatis hanya bila ada tepat satu kandidat yang namanya diawali sama.
+const aliasCache={};
+function resolveEgi(name){
+  const k=norm(name);if(!IDX||IDX.egi[k])return k;if(k in aliasCache)return aliasCache[k];
+  const c=s=>s.replace(/[\s\-]/g,"");const kk=c(k);
+  const cand=kk.length>=3?Object.keys(IDX.egi).filter(e=>{const ce=c(e);return ce.length>=3&&(ce.startsWith(kk)||kk.startsWith(ce));}):[];
+  return aliasCache[k]=cand.length===1?cand[0]:k;
+}
 function egiVal(name){
-  const k=norm(name);const x=IDX?.egi[k];const o=S.overrides[k]||{};
+  const k0=norm(name);const k=resolveEgi(name);const x=IDX?.egi[k];const o=S.overrides[k0]||S.overrides[k]||{};
   const fcD=x&&x.fcV.length?avg(x.fcV):null;const rmD=x&&x.rmV.length?avg(x.rmV)/months()/30:null;const depD=x&&x.owV.length?avg(x.owV)/30:null;
   return{fc:o.fc!=null?o.fc:fcD,rm:o.rm!=null?o.rm:rmD,dep:o.dep!=null?o.dep:depD,fcD,rmD,depD,o,x};
 }
@@ -439,7 +483,9 @@ function calc(s,distOverride){
   const g=matGroup(s.material);const over=Math.max(0,(dist-(P.baseDist||1000))/100);
   const baseRate=g==="coal"?(+P.coalGet||0)+(+P.coalHaul||0):g==="mud"?(+P.mud||0):(+P.waste||0);
   const overRate=(g==="coal"?+P.coalOver:g==="mud"?+P.mudOver:+P.wasteOver)||0;
-  const revBase=prod?prod*baseRate:null,revOver=prod?prod*over*overRate:null,rev=prod?revBase+revOver:null;
+  // Tarif coal per ton: volume BCM dikonversi ke ton dengan densitas (ton/BCM).
+  const qtyBill=prod?(g==="coal"?prod*(+P.coalDensity||1):prod):null;
+  const revBase=prod?qtyBill*baseRate:null,revOver=prod?qtyBill*over*overRate:null,rev=prod?revBase+revOver:null;
   const margin=rev!=null?rev-cost:null;const mPct=rev?margin/rev:null;
   const maxCost=rev!=null?rev*(1-(P.targetMargin||0)):null;
   return{s,dist,usedDist:at?at.dist:null,pty,need,ewh,prod,L,H,Z,cost,cpb:prod?cost/prod:null,rev,revBase,revOver,rpb:prod?rev/prod:null,margin,mpb:prod?margin/prod:null,mPct,maxCost,warn:[...new Set(warn)],ok:!!prod};
@@ -451,9 +497,9 @@ const pill=r=>{const[c,t]=status(r);return`<span class="pill ${c}">${t}</span>`;
 function renderAll(){
   const has=!!S.data;$("nodata").hidden=has||S.tab==="data";
   $("datainfo").innerHTML=has?`Data: <b>${esc(S.data.meta.fileName)}</b><br>diimpor ${new Date(S.data.meta.importedAt).toLocaleString("id-ID")}`:"Belum ada data";
-  if(S.tab==="ringkasan")renderSummary();else if(S.tab==="simulasi")renderSim();else if(S.tab==="jarak")renderDist();else renderData();
+  if(S.tab==="ringkasan")renderSummary();else if(S.tab==="simulasi")renderSim();else if(S.tab==="jarak")renderDist();else if(S.tab==="fleet")renderFleet();else renderData();
 }
-function setTab(t){if(!["ringkasan","simulasi","jarak","data"].includes(t))t="ringkasan";S.tab=t;
+function setTab(t){if(!["ringkasan","simulasi","jarak","fleet","data"].includes(t))t="ringkasan";S.tab=t;
   document.querySelectorAll(".view").forEach(v=>v.hidden=v.dataset.view!==t);
   document.querySelectorAll("nav.tabs a").forEach(a=>{if(a.dataset.tab===t)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
   renderAll();}
@@ -521,7 +567,7 @@ function renderSim(){
     row("Total biaya",b=>f0(b.total),f0(r.cost),"tot")+row("<b>Biaya per BCM</b>",b=>"<b>"+f0(b.perBcm)+"</b>","<b>"+f0(r.cpb)+"</b>","hl")+"</tbody>";
   const g=matGroup(s.material);
   $("rev-table").innerHTML=`<thead><tr><th>Uraian</th><th class="r">Per hari</th><th class="r">Per BCM</th></tr></thead><tbody>
-   <tr><td>Revenue tarif dasar ${g==="coal"?"(getting + hauling)":g==="mud"?"(mud handling)":"(waste removal)"}</td><td class="r">${f0(r.revBase)}</td><td class="r">${f0(r.prod?r.revBase/r.prod:null)}</td></tr>
+   <tr><td>Revenue tarif dasar ${g==="coal"?`(getting + hauling, ${f0(r.prod*(+S.params.coalDensity||1))} ton = BCM × ${nf2.format(+S.params.coalDensity||1)})`:g==="mud"?"(mud handling)":"(waste removal)"}</td><td class="r">${f0(r.revBase)}</td><td class="r">${f0(r.prod?r.revBase/r.prod:null)}</td></tr>
    <tr><td>Overdistance (${f0(Math.max(0,r.dist-(S.params.baseDist||1000)))} m di atas ${f0(S.params.baseDist||1000)} m)</td><td class="r">${f0(r.revOver)}</td><td class="r">${f0(r.prod?r.revOver/r.prod:null)}</td></tr>
    <tr class="tot"><td>Total revenue</td><td class="r">${f0(r.rev)}</td><td class="r">${f0(r.rpb)}</td></tr>
    <tr><td>Total cost (loading + hauling + dozing)</td><td class="r">${f0(r.cost)}</td><td class="r">${f0(r.cpb)}</td></tr>
@@ -594,8 +640,71 @@ function renderDist(){
 $("dist-legend").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?S.distSel.add(id):S.distSel.delete(id);renderDist();});
 $("dist-sc").addEventListener("change",renderDist);
 
+// ---------- Fleet terbaik ----------
+const FL={mat:null,ewh:null,dozer:null,dqty:null,step:500,hide:true};
+function egiComplete(n){const v=egiVal(n);return v.fc!=null&&v.rm!=null&&v.dep!=null;}
+function renderFleet(){
+  if(!S.data){["fleet-kpis","fleet-best","fleet-map"].forEach(id=>$(id).innerHTML="");$("fleet-missing").textContent="";$("fleet-best").innerHTML=`<tbody><tr><td class="muted">Impor raw data terlebih dulu.</td></tr></tbody>`;return;}
+  const ref=S.scenarios[0]||{};
+  if(FL.mat==null||!IDX.mats.includes(FL.mat))FL.mat=IDX.mats.includes("OB")?"OB":IDX.mats[0];
+  if(FL.ewh==null)FL.ewh=ref.ewh||15;if(FL.dozer==null)FL.dozer=ref.dozer||"";if(FL.dqty==null)FL.dqty=ref.dozerQty||0;
+  $("f-mat").innerHTML=opts(IDX.mats,FL.mat,m=>MATNAME[m]||m);
+  const set=(id,v)=>{const el=$(id);if(document.activeElement!==el)el.value=v;};
+  set("f-ewh",FL.ewh);set("f-dozer",FL.dozer);set("f-dqty",FL.dqty);$("f-step").value=String(FL.step);$("f-hide").checked=FL.hide;
+  // hitung semua kombinasi untuk material ini
+  const combos=Object.values(S.data.mf).filter(c=>c.material===norm(FL.mat));
+  const rows=[],missing=[];
+  combos.forEach(c=>{const ok=egiComplete(c.loader)&&egiComplete(c.hauler);
+    const lack=[c.loader,c.hauler].filter(n=>!egiComplete(n));
+    if(!ok)missing.push(c.loader+" × "+c.hauler+" (data "+lack.join(", ")+" belum lengkap)");
+    if(!ok&&FL.hide)return;
+    const s={material:FL.mat,loader:c.loader,hauler:c.hauler,dist:0,ewh:+FL.ewh||0,dozer:FL.dozer,dozerQty:+FL.dqty||0,dozerEwh:null,haulQty:null,pty:null};
+    const res={};c.dist.forEach(d=>{const r=calc(s,d);if(r.ok&&isNum(r.cpb))res[d]=r;});
+    rows.push({c,s,res,ok,name:c.loader+" × "+c.hauler});});
+  const allD=[...new Set(rows.flatMap(x=>Object.keys(x.res).map(Number)))].sort((a,b)=>a-b);
+  const dists=allD.filter(d=>d%FL.step===0);
+  if(!rows.length||!dists.length){$("fleet-kpis").innerHTML="";$("fleet-best").innerHTML=`<tbody><tr><td class="muted">Tidak ada fleet dengan data lengkap untuk material ${esc(FL.mat)}.</td></tr></tbody>`;$("fleet-map").innerHTML="";}
+  else{
+    // peringkat per jarak
+    const rankAt=d=>rows.filter(x=>x.res[d]).map(x=>({x,r:x.res[d]})).sort((a,b)=>a.r.cpb-b.r.cpb);
+    const bestCount={};allD.forEach(d=>{const rk=rankAt(d);if(rk[0])bestCount[rk[0].x.name]=(bestCount[rk[0].x.name]||0)+1;});
+    const champ=Object.entries(bestCount).sort((a,b)=>b[1]-a[1])[0];
+    const overall=rankAt(dists[Math.floor(dists.length/2)]);
+    // titik pindah fleet terbaik
+    const switches=[];let prev=null;allD.forEach(d=>{const b=rankAt(d)[0];if(b&&b.x.name!==prev){switches.push({d,name:b.x.name});prev=b.x.name;}});
+    $("fleet-kpis").innerHTML=`<div class="kpi lead"><span class="label">Paling sering termurah</span><span class="big" style="font-size:24px">${esc(champ?champ[0]:"–")}</span><span class="foot">termurah di ${champ?champ[1]:0} dari ${allD.length} titik jarak</span></div>
+      <div class="kpi"><span class="label">Fleet dibandingkan</span><span class="big">${rows.length}</span><span class="foot">material ${esc(FL.mat)}${missing.length?` · ${missing.length} dilewati (data kurang)`:""}</span></div>
+      <div class="kpi"><span class="label">Rentang jarak</span><span class="big">${f0(allD[0])}–${f0(allD[allD.length-1])} <small>m</small></span><span class="foot">EWH ${f1(+FL.ewh)} jam · dozer ${esc(FL.dozer||"–")} × ${f0(+FL.dqty)}</span></div>
+      <div class="kpi"><span class="label">Pergantian fleet terbaik</span><span class="big">${Math.max(0,switches.length-1)} <small>kali</small></span><span class="foot">${switches.slice(1,4).map(x=>`≥ ${f0(x.d)} m: ${esc(x.name)}`).join("<br>")||"satu fleet terbaik di semua jarak"}</span></div>`;
+    // tabel top 3 per jarak
+    const cell=(e)=>e?`<td><b>${esc(e.x.name)}</b><div class="small muted">${f0(e.r.cpb)} Rp/BCM · margin ${pct(e.r.mPct)} · ${f0(e.r.need)} hauler</div></td>`:`<td class="muted">–</td>`;
+    $("fleet-best").innerHTML=`<thead><tr><th class="r">Jarak (m)</th><th><span class="rank r1">1</span>Termurah</th><th><span class="rank">2</span>Kedua</th><th><span class="rank">3</span>Ketiga</th><th class="r">Hemat vs #2 (Rp/BCM)</th><th>Status #1</th><th></th></tr></thead><tbody>`+
+      dists.map(d=>{const rk=rankAt(d);const gap=rk[1]?rk[1].r.cpb-rk[0].r.cpb:null;
+        return`<tr><td class="r"><b>${f0(d)}</b></td>${cell(rk[0])}${cell(rk[1])}${cell(rk[2])}<td class="r">${f0(gap)}</td><td>${rk[0]?pill(rk[0].r):""}</td><td>${rk[0]?`<button type="button" class="ghost" data-mk="${esc(rk[0].x.c.loader)}|${esc(rk[0].x.c.hauler)}|${d}">+ Skenario</button>`:""}</td></tr>`;}).join("")+"</tbody>";
+    // peta warna
+    const sorted=rows.slice().sort((a,b)=>{const av=avg(dists.map(d=>a.res[d]?.cpb).filter(isNum))??1e15,bv=avg(dists.map(d=>b.res[d]?.cpb).filter(isNum))??1e15;return av-bv;});
+    const colStat={};dists.forEach(d=>{const v=rows.map(x=>x.res[d]?.cpb).filter(isNum);colStat[d]={min:Math.min(...v),max:Math.max(...v)};});
+    $("fleet-map").innerHTML=`<thead><tr><th>Fleet (loader × hauler)</th>${dists.map(d=>`<th class="r">${nf0.format(d)}</th>`).join("")}</tr></thead><tbody>`+
+      sorted.map(x=>`<tr><td><b>${esc(x.name)}</b>${x.ok?"":' <span class="pill warn">data kurang</span>'}</td>${dists.map(d=>{const r=x.res[d];if(!r)return`<td class="na">·</td>`;
+        const st=colStat[d];const t=st.max>st.min?(r.cpb-st.min)/(st.max-st.min):0;const best=r.cpb===st.min;
+        const bg=`color-mix(in srgb,color-mix(in srgb,var(--bad) ${Math.round(t*100)}%,var(--good)) ${Math.round(18+Math.abs(t-0.5)*50)}%,var(--surface))`;
+        return`<td class="hc${best?" best":""}" style="background:${bg}" data-tip="${esc(x.name)} · ${nf0.format(d)} m<br><b>${f0(r.cpb)} Rp/BCM</b><br>${f0(r.need)} hauler · margin ${pct(r.mPct)}">${nf1.format(r.cpb/1000)}</td>`;}).join("")}</tr>`).join("")+"</tbody>";
+  }
+  const al=[...new Set(combos.flatMap(c=>[c.loader,c.hauler]))].map(n=>{const k=resolveEgi(n);return k!==norm(n)?esc(n)+" → "+esc(IDX.egi[k].name):null;}).filter(Boolean);
+  $("fleet-missing").innerHTML=(al.length?`<b>Nama EGI disesuaikan otomatis:</b> ${al.join(" · ")}.<br>`:"")+(missing.length?`<b>Fleet ${FL.hide?"yang dilewati":"dengan data kurang"}:</b> ${missing.map(esc).join(" · ")}. Lengkapi lewat override di menu Data &amp; Parameter, atau samakan nama EGI di Excel.`:"");
+}
+$("f-mat").addEventListener("change",e=>{FL.mat=e.target.value;renderFleet();});
+$("f-ewh").addEventListener("change",e=>{FL.ewh=+e.target.value||0;renderFleet();});
+$("f-dozer").addEventListener("change",e=>{FL.dozer=e.target.value.trim();renderFleet();});
+$("f-dqty").addEventListener("change",e=>{FL.dqty=+e.target.value||0;renderFleet();});
+$("f-step").addEventListener("change",e=>{FL.step=+e.target.value;renderFleet();});
+$("f-hide").addEventListener("change",e=>{FL.hide=e.target.checked;renderFleet();});
+$("fleet-best").addEventListener("click",e=>{const b=e.target.closest("[data-mk]");if(!b)return;const[l,h,d]=b.dataset.mk.split("|");
+  const s={id:uid(),name:"",material:FL.mat,loader:l,hauler:h,dist:+d,ewh:+FL.ewh||0,cn:"",dozer:FL.dozer,dozerQty:+FL.dqty||0,dozerEwh:null,haulQty:null,pty:null};
+  autoName(s);S.scenarios.push(s);S.sel=s.id;S.distSel=null;persist();toast("Skenario "+s.name+" ditambahkan");location.hash="simulasi";});
+
 // ---------- Data & parameter ----------
-const PARDEF=[["fuelPrice","Harga solar (Rp/liter)","Rate Cost Fuel"],["waste","Tarif waste removal (Rp/BCM, ≤ jarak dasar)","OB & TS"],["wasteOver","Overdistance waste (Rp/BCM/100 m)",""],["mud","Tarif mud handling (Rp/BCM)","MD"],["mudOver","Overdistance mud (Rp/BCM/100 m)",""],["coalGet","Coal getting (Rp/ton)","CG"],["coalHaul","Coal hauling (Rp/ton, ≤ jarak dasar)",""],["coalOver","Overdistance coal (Rp/ton/100 m)",""],["baseDist","Jarak dasar tarif (m)","overdistance dihitung di atas jarak ini"],["targetMargin","Target margin (%)",""],["mpRate","Biaya MP (Rp/jam/unit)","auto dari P_MP"],["rmMonths","Pembagi bulan RM aktual","auto = bulan berisi data"],["dozerRatio","EWH dozer ÷ EWH loader","default Excel 0,5"]];
+const PARDEF=[["fuelPrice","Harga solar (Rp/liter)","Rate Cost Fuel"],["waste","Tarif waste removal (Rp/BCM, ≤ jarak dasar)","OB & TS"],["wasteOver","Overdistance waste (Rp/BCM/100 m)",""],["mud","Tarif mud handling (Rp/BCM)","MD"],["mudOver","Overdistance mud (Rp/BCM/100 m)",""],["coalGet","Coal getting (Rp/ton)","CG"],["coalHaul","Coal hauling (Rp/ton, ≤ jarak dasar)",""],["coalOver","Overdistance coal (Rp/ton/100 m)",""],["baseDist","Jarak dasar tarif (m)","overdistance dihitung di atas jarak ini"],["targetMargin","Target margin (%)",""],["mpRate","Biaya MP (Rp/jam/unit)","auto dari P_MP"],["rmMonths","Pembagi bulan RM aktual","auto = bulan berisi data"],["coalDensity","Densitas coal (ton/BCM)","konversi volume BCM ke ton untuk tarif coal"],["dozerRatio","EWH dozer ÷ EWH loader","default Excel 0,5"]];
 function renderData(){
   // import status
   const m=S.data?.meta;$("imp-sim").checked=!S.scenarios.length;
