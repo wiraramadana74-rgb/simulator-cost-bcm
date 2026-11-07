@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulator Cost per BCM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: control-room sheet. Header + tab bar, then one working view per tab. */
+:root{
+  --bg:#eef1f0; --surface:#ffffff; --sunk:#e4e8e6; --line:#cfd6d3; --ink:#18211e; --muted:#5b6863;
+  --accent:#b8740a; --accent-ink:#ffffff; --accent-soft:#f6e7cc;
+  --good:#2f7d4f; --good-soft:#dcefe3; --warn:#a86a00; --warn-soft:#f8ead0; --bad:#b2392b; --bad-soft:#f6dcd8;
+  --s-load:#1f5f8b; --s-haul:#b8740a; --s-doz:#6b7f3a; --rev:#b2392b;
+  --c1:#1f5f8b; --c2:#b8740a; --c3:#2f7d4f; --c4:#8a3f8f; --c5:#b2392b; --c6:#3c8c8c; --c7:#6b7f3a; --c8:#5b6863;
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121816; --surface:#1a2220; --sunk:#222c29; --line:#33403c; --ink:#e3e9e6; --muted:#97a59f;
+  --accent:#e0a33a; --accent-ink:#1a1206; --accent-soft:#3a2d14;
+  --good:#5fbf86; --good-soft:#1d3527; --warn:#e3a440; --warn-soft:#3a2c13; --bad:#ec7a6b; --bad-soft:#3d1f1b;
+  --s-load:#6fb2e0; --s-haul:#e0a33a; --s-doz:#a9c26a; --rev:#ec7a6b;
+  --c1:#6fb2e0; --c2:#e0a33a; --c3:#5fbf86; --c4:#c98bd0; --c5:#ec7a6b; --c6:#6cc4c4; --c7:#a9c26a; --c8:#a4b1ab;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+[hidden]{display:none!important}
+.wrap{max-width:1320px;margin:0 auto;padding:18px 16px 60px;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:30px;line-height:1.05;letter-spacing:.01em}
+h2{font-size:18px;text-transform:uppercase;letter-spacing:.06em}
+h3{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.muted{color:var(--muted)} .small{font-size:12.5px}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.num,td.r{font-variant-numeric:tabular-nums}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;border-bottom:3px solid var(--ink);padding-bottom:12px}
+.brand .sub{color:var(--muted);font-size:13px}
+.datainfo{font-size:12.5px;color:var(--muted);text-align:right}
+.datainfo b{color:var(--ink);font-weight:600}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+nav.tabs a{padding:8px 14px;text-decoration:none;color:var(--muted);font-weight:600;font-size:13px;letter-spacing:.04em;text-transform:uppercase;border-bottom:3px solid transparent;margin-bottom:-1px}
+nav.tabs a:hover{color:var(--ink)}
+nav.tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:6px 8px;min-width:0}
+input[type=number]{text-align:right;font-variant-numeric:tabular-nums}
+input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button,.btn{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:6px 12px;font-weight:500;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+button:hover,.btn:hover{background:var(--sunk)}
+button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.primary:hover{filter:brightness(1.06)}
+button.ghost{border-color:transparent;background:transparent;padding:3px 8px}
+button.ghost:hover{background:var(--sunk)}
+button.danger{color:var(--bad)}
+button.confirm{background:var(--bad);border-color:var(--bad);color:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi.lead{border-top:4px solid var(--accent)}
+.kpi .big{font-family:var(--f-display);font-weight:600;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi .big small{font-size:15px;color:var(--muted);font-weight:500}
+.kpi .foot{font-size:12.5px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.good{background:var(--good-soft);color:var(--good)} .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.none{background:var(--sunk);color:var(--muted)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;background:var(--sunk)}
+th.r,td.r{text-align:right}
+tbody tr:last-child td{border-bottom:none}
+tr.sec td{background:var(--sunk);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+tr.tot td{font-weight:600;border-top:2px solid var(--ink)}
+tr.hl td{background:var(--accent-soft)}
+tbody tr.click{cursor:pointer} tbody tr.click:hover td{background:var(--sunk)}
+.empty{padding:28px 14px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:6px}
+.banner{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;padding:10px 14px;font-size:13px}
+.banner.bad{background:var(--bad-soft);border-color:var(--bad)}
+.warnline{color:var(--warn);font-size:12.5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 12px;font-size:12.5px;cursor:pointer;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:26px 16px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center;background:var(--bg)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;gap:6px 14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-2px;margin-right:5px}
+.legend label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.ovr input{width:120px}
+.ovr input.set{border-color:var(--accent);background:var(--accent-soft)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:5px;font-size:13px;z-index:20;max-width:90vw}
+.edit-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px}
+.edit-grid .w2{grid-column:span 2}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:6px 9px;border-radius:4px;z-index:30;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:1000px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.edit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.edit-grid .w2{grid-column:span 2}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Simulator Cost per BCM</h1>
+      <div class="sub">Loading · Hauling · Dozing per kombinasi fleet dan jarak, dari raw data budget</div>
+    </div>
+    <div class="datainfo" id="datainfo">Belum ada data</div>
+  </header>
+  <nav class="tabs" aria-label="Menu">
+    <a href="#ringkasan" data-tab="ringkasan">Ringkasan</a>
+    <a href="#simulasi" data-tab="simulasi">Simulasi</a>
+    <a href="#jarak" data-tab="jarak">Analisa Jarak</a>
+    <a href="#data" data-tab="data">Data &amp; Parameter</a>
+  </nav>
+
+  <div id="nodata" class="banner" hidden>
+    <span>Belum ada raw data. Impor file Excel (misalnya <b>Simulasi Cost per BCM.xlsx</b>) di menu Data &amp; Parameter.</span>
+    <a class="btn primary" href="#data">Impor Excel</a>
+  </div>
+  <div id="libfail" class="banner bad" hidden>Pembaca Excel (SheetJS) gagal dimuat. Pastikan komputer terhubung ke internet, lalu muat ulang halaman.</div>
+
+  <!-- RINGKASAN -->
+  <section data-view="ringkasan" class="view">
+    <div class="kpis" id="sum-kpis"></div>
+    <div class="panel">
+      <div class="panel-head"><h2>Cost/BCM per skenario</h2>
+        <div class="legend"><span><i style="background:var(--s-load)"></i>Loading</span><span><i style="background:var(--s-haul)"></i>Hauling</span><span><i style="background:var(--s-doz)"></i>Dozing</span><span><i style="background:var(--rev);height:3px;width:14px;vertical-align:middle"></i>Revenue/BCM</span></div>
+      </div>
+      <div class="chart" id="sum-chart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Tabel ringkasan</h2>
+        <div class="row"><button type="button" id="btn-export-xlsx">Ekspor ke Excel</button></div></div>
+      <div class="tbl-wrap"><table id="sum-table"></table></div>
+      <div class="small muted">Klik baris untuk membuka detail skenario. Status: hijau = margin ≥ target, kuning = margin positif tapi di bawah target, merah = rugi.</div>
+    </div>
+  </section>
+
+  <!-- SIMULASI -->
+  <section data-view="simulasi" class="view" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>Skenario</h2>
+        <div class="row">
+          <button type="button" id="btn-add" class="primary">+ Skenario baru</button>
+          <button type="button" id="btn-dup">Duplikat</button>
+          <button type="button" id="btn-del" class="danger">Hapus</button>
+        </div></div>
+      <div class="chips" id="sc-chips"></div>
+      <div class="edit-grid" id="sc-form">
+        <div class="field w2"><label class="label" for="s-name">Nama skenario</label><input id="s-name"></div>
+        <div class="field"><label class="label" for="s-mat">Material</label><select id="s-mat"></select></div>
+        <div class="field"><label class="label" for="s-loader">Loader (EGI)</label><select id="s-loader"></select></div>
+        <div class="field"><label class="label" for="s-hauler">Hauler (EGI)</label><select id="s-hauler"></select></div>
+        <div class="field"><label class="label" for="s-dist">Jarak (m)</label><select id="s-dist"></select></div>
+        <div class="field"><label class="label" for="s-ewh">Plan EWH (jam/hari)</label><input type="number" id="s-ewh" min="0" step="0.5"></div>
+        <div class="field"><label class="label" for="s-cn">CN loader (ref.)</label><input id="s-cn" placeholder="opsional"></div>
+        <div class="field w2"><label class="label" for="s-dozer">Dozer (EGI)</label><input id="s-dozer" list="egi-list"></div>
+        <div class="field"><label class="label" for="s-dqty">Qty dozer</label><input type="number" id="s-dqty" min="0" step="1"></div>
+        <div class="field"><label class="label" for="s-dewh">EWH dozer</label><input type="number" id="s-dewh" min="0" step="0.5" placeholder="auto"></div>
+        <div class="field w2"><label class="label" for="s-haulqty">Jumlah hauler</label><input type="number" id="s-haulqty" min="0" step="1" placeholder="auto (match factor)"></div>
+        <div class="field w2"><label class="label" for="s-pty">Plan pty loader (BCM/jam)</label><input type="number" id="s-pty" min="0" step="1" placeholder="auto (match factor)"></div>
+      </div>
+      <datalist id="egi-list"></datalist>
+      <div id="sc-warn" class="warnline"></div>
+    </div>
+    <div class="kpis" id="sc-kpis"></div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2 id="cost-title">Cost</h2><span class="small muted">Rp per hari</span></div>
+        <div class="tbl-wrap"><table id="cost-table"></table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Revenue &amp; margin</h2><span class="small muted">Rp per hari</span></div>
+        <div class="tbl-wrap"><table id="rev-table"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- JARAK -->
+  <section data-view="jarak" class="view" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>Total Cost/BCM terhadap jarak</h2><span class="small muted">Fleet dari tiap skenario, dihitung untuk semua jarak di Match Factor</span></div>
+      <div class="legend" id="dist-legend"></div>
+      <div class="chart" id="dist-chart"></div>
+      <div class="small muted">Garis putus-putus merah = revenue/BCM untuk material skenario pertama yang dipilih. Titik tebal = jarak yang dipakai di skenario.</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Tabel per jarak</h2><select id="dist-sc" aria-label="Pilih skenario"></select></div>
+      <div class="tbl-wrap"><table id="dist-table"></table></div>
+    </div>
+  </section>
+
+  <!-- DATA -->
+  <section data-view="data" class="view" hidden>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>Impor / perbarui raw data</h2></div>
+        <div class="drop" id="drop">
+          <b>Tarik file Excel ke sini</b>
+          <span class="small muted">atau</span>
+          <label class="btn primary" for="file-xlsx">Pilih file .xlsx</label>
+          <input type="file" id="file-xlsx" accept=".xlsx,.xlsm,.xls" hidden>
+          <label class="small"><input type="checkbox" id="imp-sim"> Ambil juga skenario &amp; parameter dari sheet <b>Simulasi</b></label>
+          <span class="small muted">Sheet yang dibaca: POP Unit, P_FC, P_OW, Cost Act by Unit, P_MP, Match Factor Pdty, Simulasi. Kolom dicari berdasarkan judulnya, jadi baris/unit baru ikut terbaca.</span>
+        </div>
+        <div id="imp-status"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Parameter</h2><button type="button" id="btn-reset-par" class="ghost">Kembalikan ke nilai Excel</button></div>
+        <div class="tbl-wrap"><table id="par-table"></table></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Biaya per EGI</h2><span class="small muted">Nilai dari raw data. Isi kolom override untuk mengganti nilai tanpa mengubah Excel; kosongkan untuk kembali ke data.</span></div>
+      <div class="row"><input id="egi-q" placeholder="Cari EGI…" style="width:200px"><label class="small"><input type="checkbox" id="egi-used" checked> Hanya EGI yang dipakai skenario</label></div>
+      <div class="tbl-wrap"><table id="egi-table"></table></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>Kombinasi Match Factor</h2><span class="small muted" id="mf-count"></span></div>
+        <div class="tbl-wrap" style="max-height:340px;overflow:auto"><table id="mf-table"></table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Backup database</h2></div>
+        <p class="small muted" style="margin:0">Data tersimpan di browser ini. Simpan backup (.json) untuk dipindah ke komputer lain atau dibagikan ke rekan, lalu pulihkan dari file tersebut.</p>
+        <div class="row">
+          <button type="button" id="btn-backup">Simpan backup</button>
+          <label class="btn" for="file-json">Pulihkan dari backup</label><input type="file" id="file-json" accept=".json" hidden>
+          <button type="button" id="btn-wipe" class="danger">Hapus semua data</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(function(){
+"use strict";
+// ================= utilities =================
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm=s=>String(s==null?"":s).trim().replace(/\s+/g," ").toUpperCase();
+const normCode=s=>String(s==null?"":s).replace(/\s+/g,"").toUpperCase();
+const isNum=v=>typeof v==="number"&&isFinite(v);
+const toNum=v=>{if(isNum(v))return v;if(typeof v==="string"&&v.trim()!==""){const n=Number(v.replace(/,/g,""));return isFinite(n)?n:null;}return null;};
+const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+const nf0=new Intl.NumberFormat("id-ID",{maximumFractionDigits:0});
+const nf1=new Intl.NumberFormat("id-ID",{maximumFractionDigits:1});
+const nf2=new Intl.NumberFormat("id-ID",{minimumFractionDigits:2,maximumFractionDigits:2});
+const f0=v=>isNum(v)?nf0.format(v):"–";
+const f1=v=>isNum(v)?nf1.format(v):"–";
+const pct=v=>isNum(v)?nf1.format(v*100)+"%":"–";
+function rpS(v){if(!isNum(v))return"–";const a=Math.abs(v);if(a>=1e9)return nf2.format(v/1e9)+" M";if(a>=1e6)return nf1.format(v/1e6)+" jt";return nf0.format(v);}
+function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,3200);}
+const uid=()=>Math.random().toString(36).slice(2,10);
+function download(name,blob){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+
+// ================= storage (IndexedDB, fallback memory) =================
+const store=(()=>{let dbp=null;const mem={};
+  function open(){if(dbp)return dbp;dbp=new Promise((res)=>{try{const r=indexedDB.open("costbcm",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>res(null);}catch(e){res(null);}});return dbp;}
+  return{async get(k){const db=await open();if(!db)return mem[k];return new Promise(res=>{try{const q=db.transaction("kv").objectStore("kv").get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined);}catch(e){res(mem[k]);}});},
+    async set(k,v){mem[k]=v;const db=await open();if(!db)return;return new Promise(res=>{try{const t=db.transaction("kv","readwrite");t.objectStore("kv").put(v,k);t.oncomplete=()=>res();t.onerror=()=>res();}catch(e){res();}});},
+    async del(k){delete mem[k];const db=await open();if(!db)return;return new Promise(res=>{try{const t=db.transaction("kv","readwrite");t.objectStore("kv").delete(k);t.oncomplete=()=>res();t.onerror=()=>res();}catch(e){res();}});}};
+})();
+
+// ================= state =================
+// Tarif & harga sengaja kosong: terisi dari sheet Simulasi saat Excel diimpor, atau diisi manual.
+const DEFAULT_PARAMS={fuelPrice:null,waste:null,wasteOver:null,mud:null,mudOver:null,coalGet:null,coalHaul:null,coalOver:null,targetMargin:0.15,baseDist:1000,rmMonths:null,mpRate:null,dozerRatio:0.5};
+const S={data:null,params:{...DEFAULT_PARAMS},excelParams:null,scenarios:[],overrides:{},sel:null,distSel:null,tab:"ringkasan"};
+let saveT=null;
+function persist(){clearTimeout(saveT);saveT=setTimeout(()=>{store.set("params",S.params);store.set("scenarios",S.scenarios);store.set("overrides",S.overrides);store.set("excelParams",S.excelParams);},300);}
+
+// ================= Excel parsing =================
+function sheetRows(wb,name){
+  const key=Object.keys(wb.Sheets).find(n=>norm(n)===norm(name));
+  if(!key)return null;
+  const ws=wb.Sheets[key];if(!ws["!ref"])return{name:key,rows:[]};
+  const r=XLSX.utils.decode_range(ws["!ref"]);r.s.r=0;r.s.c=0;ws["!ref"]=XLSX.utils.encode_range(r);
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null,blankrows:true});
+  // errors (#N/A) come back as strings starting with '#': keep as null
+  return{name:key,rows:rows.map(row=>row.map(v=>(typeof v==="string"&&/^#(N\/A|REF!|VALUE!|DIV\/0!|NAME\?|NUM!|NULL!)/.test(v))?null:v))};
+}
+function findHeader(rows,labels,maxRow=40){
+  const want=labels.map(norm);
+  for(let r=0;r<Math.min(rows.length,maxRow);r++){const row=rows[r]||[];const cols={};
+    row.forEach((v,c)=>{const n=norm(v);const i=want.indexOf(n);if(i>=0&&cols[want[i]]==null)cols[want[i]]=c;});
+    if(want.every(w=>cols[w]!=null))return{r,cols,row};}
+  return null;
+}
+function findLabel(rows,label){const w=norm(label);for(let r=0;r<rows.length;r++){const row=rows[r]||[];for(let c=0;c<row.length;c++)if(norm(row[c])===w)return{r,c};}return null;}
+function firstNumRight(rows,pos,maxSkip=4){if(!pos)return null;const row=rows[pos.r]||[];for(let c=pos.c+1;c<=pos.c+maxSkip&&c<row.length;c++){const n=toNum(row[c]);if(n!=null)return n;}return null;}
+const MONTHS=["JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI","JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"];
+
+function parseWorkbook(wb){
+  const rep={};const D={units:[],fc:[],ow:[],rm:{rows:[],months:[],monthsWithData:0},mpRate:null,mf:{},sim:null};
+  // POP Unit
+  const pop=sheetRows(wb,"POP Unit");const popMap={};
+  if(!pop)rep["POP Unit"]={ok:false,msg:"Sheet tidak ditemukan"};else{
+    const h=findHeader(pop.rows,["Code Unit","Model"]);
+    if(!h)rep["POP Unit"]={ok:false,msg:"Kolom 'Code Unit' / 'Model' tidak ditemukan"};else{
+      const cType=h.row.findIndex(v=>norm(v)==="TYPE"),cStat=h.row.findIndex(v=>norm(v)==="STATUS"),cCat=h.row.findIndex(v=>norm(v)==="CATEGORY");
+      for(let r=h.r+1;r<pop.rows.length;r++){const row=pop.rows[r]||[];const code=row[h.cols["CODE UNIT"]],model=row[h.cols["MODEL"]];
+        if(code==null||model==null||String(code).trim()===""||String(model).trim()==="")continue;
+        D.units.push({code:String(code).trim(),model:String(model).trim(),type:cType>=0?String(row[cType]||"").trim():"",status:cStat>=0?String(row[cStat]||"").trim():"",cat:cCat>=0?String(row[cCat]||"").trim():""});
+        popMap[normCode(code)]=String(model).trim();}
+      rep["POP Unit"]={ok:true,msg:D.units.length+" unit"};}}
+  const egiOf=(code,cached)=>popMap[normCode(code)]||(cached!=null&&String(cached).trim()!==""&&String(cached).trim()!=="0"?String(cached).trim():null);
+  // P_FC
+  const fc=sheetRows(wb,"P_FC");
+  if(!fc)rep["P_FC"]={ok:false,msg:"Sheet tidak ditemukan"};else{const h=findHeader(fc.rows,["CN Unit","Plan FC"]);
+    if(!h)rep["P_FC"]={ok:false,msg:"Kolom 'CN Unit' / 'Plan FC' tidak ditemukan"};else{const cE=h.row.findIndex(v=>norm(v)==="EGI");
+      for(let r=h.r+1;r<fc.rows.length;r++){const row=fc.rows[r]||[];const code=row[h.cols["CN UNIT"]];if(code==null||String(code).trim()==="")continue;
+        const egi=egiOf(code,cE>=0?row[cE]:null);const v=toNum(row[h.cols["PLAN FC"]]);if(egi)D.fc.push({code:String(code).trim(),egi,fc:v||0});}
+      rep["P_FC"]={ok:true,msg:D.fc.length+" unit"};}}
+  // P_OW (owning / depresiasi bulanan)
+  const ow=sheetRows(wb,"P_OW");
+  if(!ow)rep["P_OW"]={ok:false,msg:"Sheet tidak ditemukan"};else{const h=findHeader(ow.rows,["No Lambung","EGI"]);
+    if(!h)rep["P_OW"]={ok:false,msg:"Kolom 'No Lambung' / 'EGI' tidak ditemukan"};else{
+      const mcols=[];h.row.forEach((v,c)=>{const n=toNum(v);if(c>h.cols["EGI"]&&n!=null&&n>30000&&n<80000)mcols.push(c);});
+      for(let r=h.r+1;r<ow.rows.length;r++){const row=ow.rows[r]||[];const code=row[h.cols["NO LAMBUNG"]];if(code==null||String(code).trim()==="")continue;
+        const egi=egiOf(code,row[h.cols["EGI"]]);const vals=mcols.map(c=>toNum(row[c])).filter(v=>v!=null);const a=avg(vals);if(egi&&a!=null)D.ow.push({code:String(code).trim(),egi,avg:a});}
+      rep["P_OW"]={ok:true,msg:D.ow.length+" unit · "+mcols.length+" bulan owning"};}}
+  // Cost Act by Unit (RM aktual)
+  const ca=sheetRows(wb,"Cost Act by Unit");
+  if(!ca)rep["Cost Act by Unit"]={ok:false,msg:"Sheet tidak ditemukan"};else{const h=findHeader(ca.rows,["CODE UNIT"]);
+    if(!h)rep["Cost Act by Unit"]={ok:false,msg:"Kolom 'CODE UNIT' tidak ditemukan"};else{
+      const cE=h.row.findIndex(v=>norm(v)==="EGI");const mcols=[];h.row.forEach((v,c)=>{const i=MONTHS.indexOf(norm(v));if(i>=0)mcols.push({c,m:MONTHS[i]});});
+      const colSum=mcols.map(()=>0);
+      for(let r=h.r+1;r<ca.rows.length;r++){const row=ca.rows[r]||[];const code=row[h.cols["CODE UNIT"]];if(code==null||String(code).trim()==="")continue;
+        const egi=egiOf(code,cE>=0?row[cE]:null);let tot=0;mcols.forEach((m,i)=>{const v=toNum(row[m.c])||0;tot+=v;colSum[i]+=Math.abs(v);});
+        if(egi)D.rm.rows.push({code:String(code).trim(),egi,total:tot});}
+      D.rm.months=mcols.map(m=>m.m);D.rm.monthsWithData=colSum.filter(s=>s>0).length;
+      rep["Cost Act by Unit"]={ok:true,msg:D.rm.rows.length+" unit · "+D.rm.monthsWithData+" bulan berisi data"};}}
+  // P_MP
+  const mp=sheetRows(wb,"P_MP");
+  if(!mp)rep["P_MP"]={ok:false,msg:"Sheet tidak ditemukan"};else{const p=findLabel(mp.rows,"Total Payroll Cost/Jam");let v=null;
+    if(p){const ht=findHeader(mp.rows,["Total"]);const row=mp.rows[p.r]||[];if(ht)v=toNum(row[ht.cols["TOTAL"]]);if(v==null){for(let c=row.length-1;c>p.c;c--){const n=toNum(row[c]);if(n!=null){v=n;break;}}}}
+    D.mpRate=v;rep["P_MP"]=v!=null?{ok:true,msg:"Rp "+f0(v)+" per jam per unit"}:{ok:false,msg:"Baris 'Total Payroll Cost/Jam' tidak ditemukan"};}
+  // Match Factor Pdty
+  const mf=sheetRows(wb,"Match Factor Pdty");
+  if(!mf)rep["Match Factor Pdty"]={ok:false,msg:"Sheet tidak ditemukan"};else{let hdr=null;let n=0;
+    const WANT={"EXCAVATORS PRODUCTIVITY":"pty","DUMP TRUCK QUANTITY":"qty","DUMP TRUCK PRODUCTIVITY":"dtp"};
+    for(let r=0;r<mf.rows.length;r++){const row=mf.rows[r]||[];
+      const cL=row.findIndex(v=>norm(v)==="LOADER");
+      if(cL>=0&&norm(row[cL+1])==="HAULER"&&norm(row[cL+2])==="MATERIAL"){const dcols=[];row.forEach((v,c)=>{const d=toNum(v);if(c>cL+2&&d!=null&&d>0)dcols.push({c,d});});hdr={cL,dcols};continue;}
+      if(!hdr)continue;const desc=norm(row[hdr.cL+3]);const k=WANT[desc];if(!k)continue;
+      const L=row[hdr.cL],H=row[hdr.cL+1],M=row[hdr.cL+2];if(L==null||H==null||M==null)continue;
+      const key=norm(L)+"|"+norm(H)+"|"+norm(M);
+      const e=D.mf[key]||(D.mf[key]={loader:String(L).trim(),hauler:String(H).trim(),material:norm(M),dist:hdr.dcols.map(x=>x.d)});
+      e[k]=hdr.dcols.map(x=>toNum(row[x.c]));if(k==="pty")n++;}
+    rep["Match Factor Pdty"]={ok:n>0,msg:n>0?Object.keys(D.mf).length+" kombinasi loader × hauler × material":"Tabel match factor tidak terbaca"};}
+  // Simulasi (skenario + parameter)
+  const sm=sheetRows(wb,"Simulasi");
+  if(!sm)rep["Simulasi"]={ok:false,msg:"Sheet tidak ditemukan (opsional)"};else{
+    const P={};const g=(lab)=>firstNumRight(sm.rows,findLabel(sm.rows,lab));
+    P.fuelPrice=g("Rate Cost Fuel");P.waste=g("Waste Removal");P.wasteOver=g("Overdistance Waste");P.mud=g("Mud Handling");P.mudOver=g("Overdistance Mud");
+    P.coalGet=g("Coal Getting");P.coalHaul=g("Coal Hauling");P.coalOver=g("Overdistance Coal");P.targetMargin=g("Margin (%)");
+    Object.keys(P).forEach(k=>{if(P[k]==null)delete P[k];});
+    const scs=[];
+    for(let r=0;r<sm.rows.length;r++){const row=sm.rows[r]||[];const c=row.findIndex(v=>norm(v)==="CN UNIT");if(c<0)continue;
+      const s={id:uid(),cn:String(row[c+1]||"").trim(),material:"OB",loader:"",hauler:"",dist:1000,ewh:15,dozer:"",dozerQty:0,dozerEwh:null,haulQty:null,pty:null};
+      const prev=sm.rows[r-1]||[];const mat=prev[c-1];if(mat)s.material=norm(mat)==="COAL"?"CG":norm(mat);
+      let gotEwh=false;
+      for(let k=r+1;k<Math.min(sm.rows.length,r+40);k++){const rr=sm.rows[k]||[];const lab=norm(rr[c]);const val=rr[c+1];
+        if(lab==="CN UNIT")break;
+        if(lab==="EGI LOADER")s.loader=String(val||"").trim();
+        else if(lab==="PLAN EWH"&&!gotEwh){gotEwh=true;s.ewh=toNum(val)||s.ewh;}
+        else if(lab==="DISTANCE")s.dist=toNum(val)||s.dist;
+        else if(lab==="EGI HAULER")s.hauler=String(val||"").trim();
+        else if(lab==="EGI DOZER")s.dozer=String(val||"").trim();
+        else if(lab==="QTY DOZER")s.dozerQty=toNum(val)||0;}
+      if(!s.loader&&s.cn)s.loader=popMap[normCode(s.cn)]||"";
+      s.name=s.loader+" × "+s.hauler+" · "+f0(s.dist)+" m";scs.push(s);}
+    D.sim={params:P,scenarios:scs};rep["Simulasi"]={ok:true,msg:scs.length+" skenario · "+Object.keys(P).length+" parameter"};}
+  return{D,rep};
+}
+
+// ================= derived lookups =================
+let IDX=null;
+function buildIndex(){
+  const D=S.data;if(!D){IDX=null;return;}
+  const e={};const get=n=>{const k=norm(n);return e[k]||(e[k]={name:String(n).trim(),units:0,type:"",fcV:[],rmV:[],owV:[]});};
+  D.units.forEach(u=>{const x=get(u.model);x.units++;if(!x.type)x.type=u.type;});
+  D.fc.forEach(u=>{if(u.fc>0)get(u.egi).fcV.push(u.fc);});
+  D.ow.forEach(u=>{if(u.avg>0)get(u.egi).owV.push(u.avg);});
+  D.rm.rows.forEach(u=>{if(u.total>0)get(u.egi).rmV.push(u.total);});
+  const mats=new Set(),loaders={};Object.values(D.mf).forEach(m=>{mats.add(m.material);loaders[norm(m.loader)]=m.loader;});
+  IDX={egi:e,mats:[...mats].sort(),loaders:Object.values(loaders).sort()};
+}
+function months(){return S.params.rmMonths||S.data?.rm?.monthsWithData||9;}
+function mpRate(){return S.params.mpRate!=null?S.params.mpRate:(S.data?.mpRate??0);}
+function egiVal(name){
+  const k=norm(name);const x=IDX?.egi[k];const o=S.overrides[k]||{};
+  const fcD=x&&x.fcV.length?avg(x.fcV):null;const rmD=x&&x.rmV.length?avg(x.rmV)/months()/30:null;const depD=x&&x.owV.length?avg(x.owV)/30:null;
+  return{fc:o.fc!=null?o.fc:fcD,rm:o.rm!=null?o.rm:rmD,dep:o.dep!=null?o.dep:depD,fcD,rmD,depD,o,x};
+}
+function mfEntry(s){return S.data?.mf[norm(s.loader)+"|"+norm(s.hauler)+"|"+norm(s.material)]||null;}
+function mfAt(e,d){if(!e)return null;let i=e.dist.indexOf(d);let exact=true;if(i<0){exact=false;i=e.dist.findIndex(x=>x>=d);if(i<0)i=e.dist.length-1;}
+  return{pty:e.pty?e.pty[i]:null,qty:e.qty?e.qty[i]:null,dist:e.dist[i],exact};}
+function matGroup(m){m=norm(m);if(m==="CG"||m==="COAL")return"coal";if(m==="MD"||m==="MUD")return"mud";return"waste";}
+const MATNAME={OB:"OB (overburden)",TS:"TS (topsoil)",MD:"MD (mud)",CG:"CG (coal getting)"};
+
+// ================= calculation (mengikuti logika sheet Simulasi) =================
+function calc(s,distOverride){
+  const P=S.params;const dist=distOverride!=null?distOverride:s.dist;const warn=[];
+  if(!P.fuelPrice)warn.push("Harga solar belum diisi (menu Data & Parameter).");
+  const e=mfEntry(s);const at=mfAt(e,dist);
+  if(!e)warn.push("Kombinasi "+s.loader+" × "+s.hauler+" ("+s.material+") tidak ada di Match Factor.");
+  else if(at&&!at.exact)warn.push("Jarak "+f0(dist)+" m tidak ada di Match Factor; dipakai "+f0(at.dist)+" m.");
+  const pty=s.pty!=null?s.pty:(at?at.pty:null);
+  const need=s.haulQty!=null?s.haulQty:(at?at.qty:null);
+  const ewh=+s.ewh||0;const prod=isNum(pty)?pty*ewh:null;
+  const fuel=+P.fuelPrice||0,mp=mpRate();
+  function block(egi,qty,hours){const v=egiVal(egi);if(egi&&(v.fc==null||v.rm==null||v.dep==null))warn.push("Data "+egi+" belum lengkap ("+[v.fc==null?"FC":null,v.rm==null?"RM":null,v.dep==null?"Depre":null].filter(Boolean).join(", ")+").");
+    const fuelL=(v.fc||0)*hours*qty;const b={egi,qty,hours,fc:v.fc,fuelL,fuelCost:fuelL*fuel,rm:(v.rm||0)*qty,mp:hours*mp*qty,dep:(v.dep||0)*qty};
+    b.total=b.fuelCost+b.rm+b.mp+b.dep;b.perBcm=prod?b.total/prod:null;return b;}
+  const L=block(s.loader,1,ewh);
+  const H=block(s.hauler,isNum(need)?need:0,ewh);
+  const dHours=s.dozerEwh!=null?+s.dozerEwh:ewh*(P.dozerRatio??0.5);
+  const Z=s.dozer&&s.dozerQty>0?block(s.dozer,+s.dozerQty,dHours):{egi:s.dozer||"",qty:0,hours:0,fc:null,fuelL:0,fuelCost:0,rm:0,mp:0,dep:0,total:0,perBcm:prod?0:null};
+  const cost=L.total+H.total+Z.total;
+  const g=matGroup(s.material);const over=Math.max(0,(dist-(P.baseDist||1000))/100);
+  const baseRate=g==="coal"?(+P.coalGet||0)+(+P.coalHaul||0):g==="mud"?(+P.mud||0):(+P.waste||0);
+  const overRate=(g==="coal"?+P.coalOver:g==="mud"?+P.mudOver:+P.wasteOver)||0;
+  const revBase=prod?prod*baseRate:null,revOver=prod?prod*over*overRate:null,rev=prod?revBase+revOver:null;
+  const margin=rev!=null?rev-cost:null;const mPct=rev?margin/rev:null;
+  const maxCost=rev!=null?rev*(1-(P.targetMargin||0)):null;
+  return{s,dist,usedDist:at?at.dist:null,pty,need,ewh,prod,L,H,Z,cost,cpb:prod?cost/prod:null,rev,revBase,revOver,rpb:prod?rev/prod:null,margin,mpb:prod?margin/prod:null,mPct,maxCost,warn:[...new Set(warn)],ok:!!prod};
+}
+function status(r){if(!r.ok||r.mPct==null)return["none","Data kurang"];if(r.mPct>=(S.params.targetMargin||0))return["good","Sesuai target"];if(r.mPct>=0)return["warn","Di bawah target"];return["bad","Rugi"];}
+const pill=r=>{const[c,t]=status(r);return`<span class="pill ${c}">${t}</span>`;};
+
+// ================= rendering =================
+function renderAll(){
+  const has=!!S.data;$("nodata").hidden=has||S.tab==="data";
+  $("datainfo").innerHTML=has?`Data: <b>${esc(S.data.meta.fileName)}</b><br>diimpor ${new Date(S.data.meta.importedAt).toLocaleString("id-ID")}`:"Belum ada data";
+  if(S.tab==="ringkasan")renderSummary();else if(S.tab==="simulasi")renderSim();else if(S.tab==="jarak")renderDist();else renderData();
+}
+function setTab(t){if(!["ringkasan","simulasi","jarak","data"].includes(t))t="ringkasan";S.tab=t;
+  document.querySelectorAll(".view").forEach(v=>v.hidden=v.dataset.view!==t);
+  document.querySelectorAll("nav.tabs a").forEach(a=>{if(a.dataset.tab===t)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+  renderAll();}
+window.addEventListener("hashchange",()=>setTab(location.hash.slice(1)));
+
+// ---------- Ringkasan ----------
+function renderSummary(){
+  const rs=S.data?S.scenarios.map(s=>calc(s)):[];const ok=rs.filter(r=>r.ok);
+  const k=$("sum-kpis");
+  if(!ok.length){k.innerHTML="";$("sum-chart").innerHTML=`<div class="empty">${S.data?"Belum ada skenario yang bisa dihitung. Tambahkan di menu Simulasi.":"Impor raw data terlebih dulu."}</div>`;$("sum-table").innerHTML="";return;}
+  const best=ok.reduce((a,b)=>b.cpb<a.cpb?b:a);const worst=ok.reduce((a,b)=>b.cpb>a.cpb?b:a);const bestM=ok.reduce((a,b)=>b.mPct>a.mPct?b:a);
+  const nGood=ok.filter(r=>status(r)[0]==="good").length;
+  k.innerHTML=`<div class="kpi lead"><span class="label">Cost/BCM terendah</span><span class="big">${f0(best.cpb)} <small>Rp/BCM</small></span><span class="foot">${esc(best.s.name)}</span></div>
+  <div class="kpi"><span class="label">Cost/BCM tertinggi</span><span class="big">${f0(worst.cpb)} <small>Rp/BCM</small></span><span class="foot">${esc(worst.s.name)}</span></div>
+  <div class="kpi"><span class="label">Margin terbaik</span><span class="big">${pct(bestM.mPct)}</span><span class="foot">${esc(bestM.s.name)} · ${f0(bestM.mpb)} Rp/BCM</span></div>
+  <div class="kpi"><span class="label">Sesuai target margin</span><span class="big">${nGood}<small> / ${ok.length}</small></span><span class="foot">target margin ${pct(S.params.targetMargin)}</span></div>`;
+  // stacked bar chart
+  const W=900,rowH=34,ml=260,mr=70,mt=24,H=mt+rs.length*rowH+30;const max=Math.max(...ok.map(r=>Math.max(r.cpb,r.rpb||0)))*1.08;
+  const x=v=>ml+(v/max)*(W-ml-mr);let g="";
+  const step=niceStep(max/5);for(let v=0;v<=max;v+=step){g+=`<line x1="${x(v)}" x2="${x(v)}" y1="${mt-6}" y2="${H-26}" stroke="var(--line)"/><text x="${x(v)}" y="${H-10}" font-size="11" text-anchor="middle" fill="var(--muted)" font-family="var(--f-mono)">${nf0.format(v/1000)}rb</text>`;}
+  rs.forEach((r,i)=>{const y=mt+i*rowH;const nm=r.s.name.length>38?r.s.name.slice(0,37)+"…":r.s.name;
+    g+=`<text x="${ml-10}" y="${y+18}" font-size="12.5" text-anchor="end" fill="var(--ink)">${esc(nm)}</text>`;
+    if(!r.ok){g+=`<text x="${ml+6}" y="${y+18}" font-size="12" fill="var(--muted)">data kurang</text>`;return;}
+    let x0=ml;[[r.L.perBcm,"var(--s-load)","Loading"],[r.H.perBcm,"var(--s-haul)","Hauling"],[r.Z.perBcm,"var(--s-doz)","Dozing"]].forEach(([v,c,lab])=>{const w=x(v||0)-ml;g+=`<rect x="${x0}" y="${y+6}" width="${Math.max(0,w)}" height="18" fill="${c}" data-tip="${esc(r.s.name)}<br>${lab}: <b>${f0(v)} Rp/BCM</b>"/>`;x0+=w;});
+    g+=`<text x="${x0+6}" y="${y+19}" font-size="12" font-weight="600" fill="var(--ink)" font-family="var(--f-mono)">${f0(r.cpb)}</text>`;
+    if(r.rpb)g+=`<line x1="${x(r.rpb)}" x2="${x(r.rpb)}" y1="${y+2}" y2="${y+28}" stroke="var(--rev)" stroke-width="3" data-tip="Revenue: <b>${f0(r.rpb)} Rp/BCM</b>"/>`;});
+  $("sum-chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost per BCM per skenario">${g}</svg>`;
+  // table
+  $("sum-table").innerHTML=`<thead><tr><th>Skenario</th><th>Mat.</th><th class="r">Jarak (m)</th><th>Loader</th><th>Hauler</th><th class="r">Qty hauler</th><th class="r">Plan prod (BCM/hari)</th><th class="r">Loading /BCM</th><th class="r">Hauling /BCM</th><th class="r">Dozing /BCM</th><th class="r">Total /BCM</th><th class="r">Revenue /BCM</th><th class="r">Margin /BCM</th><th class="r">Margin %</th><th>Status</th></tr></thead><tbody>`+
+    rs.map(r=>`<tr class="click" data-id="${r.s.id}"><td><b>${esc(r.s.name)}</b></td><td>${esc(r.s.material)}</td><td class="r">${f0(r.dist)}</td><td>${esc(r.s.loader)}</td><td>${esc(r.s.hauler)}</td><td class="r">${f0(r.need)}</td><td class="r">${f0(r.prod)}</td><td class="r">${f0(r.L.perBcm)}</td><td class="r">${f0(r.H.perBcm)}</td><td class="r">${f0(r.Z.perBcm)}</td><td class="r"><b>${f0(r.cpb)}</b></td><td class="r">${f0(r.rpb)}</td><td class="r">${f0(r.mpb)}</td><td class="r">${pct(r.mPct)}</td><td>${pill(r)}</td></tr>`).join("")+"</tbody>";
+}
+$("sum-table").addEventListener("click",e=>{const tr=e.target.closest("tr[data-id]");if(!tr)return;S.sel=tr.dataset.id;location.hash="simulasi";});
+function niceStep(raw){const p=Math.pow(10,Math.floor(Math.log10(raw||1)));const n=raw/p;return(n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
+
+// ---------- Simulasi ----------
+function curSc(){let s=S.scenarios.find(x=>x.id===S.sel);if(!s&&S.scenarios.length){s=S.scenarios[0];S.sel=s.id;}return s;}
+function opts(list,cur,labelFn){const has=list.some(v=>String(v)===String(cur));return(has||cur==null||cur===""?"":`<option value="${esc(cur)}" selected>${esc(cur)} (tidak ada di data)</option>`)+list.map(v=>`<option value="${esc(v)}"${String(v)===String(cur)?" selected":""}>${esc(labelFn?labelFn(v):v)}</option>`).join("");}
+function renderSim(){
+  const s=curSc();
+  $("sc-chips").innerHTML=S.scenarios.map(x=>`<button type="button" class="chip" data-id="${x.id}" aria-pressed="${x.id===S.sel}">${esc(x.name)}</button>`).join("")||`<span class="muted small">Belum ada skenario.</span>`;
+  const dis=!S.data||!s;["sc-form","sc-kpis"].forEach(id=>$(id).style.opacity=dis?.5:1);$("btn-dup").disabled=$("btn-del").disabled=!s;
+  if(!S.data||!s){$("cost-table").innerHTML="";$("rev-table").innerHTML="";$("sc-kpis").innerHTML="";$("sc-warn").textContent=S.data?"Klik “+ Skenario baru” untuk mulai.":"Impor raw data terlebih dulu.";return;}
+  // form options
+  const combos=Object.values(S.data.mf);
+  $("s-mat").innerHTML=opts(IDX.mats,s.material,m=>MATNAME[m]||m);
+  $("s-loader").innerHTML=opts([...new Set(combos.filter(c=>c.material===norm(s.material)).map(c=>c.loader))].sort(),s.loader);
+  $("s-hauler").innerHTML=opts([...new Set(combos.filter(c=>c.material===norm(s.material)&&norm(c.loader)===norm(s.loader)).map(c=>c.hauler))].sort(),s.hauler);
+  const e=mfEntry(s);$("s-dist").innerHTML=opts(e?e.dist:[],s.dist,d=>nf0.format(d));
+  const set=(id,v)=>{const el=$(id);if(document.activeElement!==el)el.value=v==null?"":v;};
+  set("s-name",s.name);set("s-ewh",s.ewh);set("s-cn",s.cn||"");set("s-dozer",s.dozer||"");set("s-dqty",s.dozerQty);set("s-dewh",s.dozerEwh);set("s-haulqty",s.haulQty);set("s-pty",s.pty);
+  const r=calc(s);const at=mfAt(e,s.dist);
+  $("s-haulqty").placeholder="auto: "+(at&&isNum(at.qty)?at.qty:"–");$("s-pty").placeholder="auto: "+(at&&isNum(at.pty)?f0(at.pty):"–");$("s-dewh").placeholder="auto: "+f1((+s.ewh||0)*(S.params.dozerRatio??.5));
+  $("sc-warn").innerHTML=r.warn.map(esc).join("<br>");
+  $("sc-kpis").innerHTML=`<div class="kpi lead"><span class="label">Total cost/BCM</span><span class="big">${f0(r.cpb)} <small>Rp/BCM</small></span><span class="foot">${pill(r)}</span></div>
+   <div class="kpi"><span class="label">Plan produksi</span><span class="big">${f0(r.prod)} <small>BCM/hari</small></span><span class="foot">${f0(r.pty)} BCM/jam × ${f1(r.ewh)} jam</span></div>
+   <div class="kpi"><span class="label">Revenue/BCM</span><span class="big">${f0(r.rpb)} <small>Rp/BCM</small></span><span class="foot">margin ${f0(r.mpb)} Rp/BCM</span></div>
+   <div class="kpi"><span class="label">Margin</span><span class="big">${pct(r.mPct)}</span><span class="foot">target ${pct(S.params.targetMargin)} · ${rpS(r.margin)} per hari</span></div>`;
+  $("cost-title").textContent="Cost "+s.loader+" × "+s.hauler;
+  const c=[r.L,r.H,r.Z];const tot=k=>c.reduce((a,b)=>a+(b[k]||0),0);
+  const row=(lab,fn,totv,cls)=>`<tr${cls?` class="${cls}"`:""}><td>${lab}</td>${c.map(b=>`<td class="r">${fn(b)}</td>`).join("")}<td class="r">${totv}</td></tr>`;
+  $("cost-table").innerHTML=`<thead><tr><th>Komponen</th><th class="r">Loading</th><th class="r">Hauling</th><th class="r">Dozing</th><th class="r">Total</th></tr></thead><tbody>`+
+    row("Unit (EGI)",b=>esc(b.egi||"–"),"")+row("Jumlah unit",b=>f0(b.qty),"")+row("EWH (jam)",b=>f1(b.hours),"")+row("Plan FC (L/jam)",b=>f1(b.fc),"")+row("Pemakaian solar (L)",b=>f0(b.fuelL),f0(tot("fuelL")))+
+    `<tr class="sec"><td colspan="5">Biaya per hari (Rp)</td></tr>`+
+    row("BBM",b=>f0(b.fuelCost),f0(tot("fuelCost")))+row("Repair &amp; maintenance",b=>f0(b.rm),f0(tot("rm")))+row("Man power",b=>f0(b.mp),f0(tot("mp")))+row("Depresiasi / owning",b=>f0(b.dep),f0(tot("dep")))+
+    row("Total biaya",b=>f0(b.total),f0(r.cost),"tot")+row("<b>Biaya per BCM</b>",b=>"<b>"+f0(b.perBcm)+"</b>","<b>"+f0(r.cpb)+"</b>","hl")+"</tbody>";
+  const g=matGroup(s.material);
+  $("rev-table").innerHTML=`<thead><tr><th>Uraian</th><th class="r">Per hari</th><th class="r">Per BCM</th></tr></thead><tbody>
+   <tr><td>Revenue tarif dasar ${g==="coal"?"(getting + hauling)":g==="mud"?"(mud handling)":"(waste removal)"}</td><td class="r">${f0(r.revBase)}</td><td class="r">${f0(r.prod?r.revBase/r.prod:null)}</td></tr>
+   <tr><td>Overdistance (${f0(Math.max(0,r.dist-(S.params.baseDist||1000)))} m di atas ${f0(S.params.baseDist||1000)} m)</td><td class="r">${f0(r.revOver)}</td><td class="r">${f0(r.prod?r.revOver/r.prod:null)}</td></tr>
+   <tr class="tot"><td>Total revenue</td><td class="r">${f0(r.rev)}</td><td class="r">${f0(r.rpb)}</td></tr>
+   <tr><td>Total cost (loading + hauling + dozing)</td><td class="r">${f0(r.cost)}</td><td class="r">${f0(r.cpb)}</td></tr>
+   <tr class="hl"><td><b>Margin</b> ${pill(r)}</td><td class="r"><b>${f0(r.margin)}</b></td><td class="r"><b>${f0(r.mpb)}</b></td></tr>
+   <tr><td>Margin %</td><td class="r" colspan="2">${pct(r.mPct)}</td></tr>
+   <tr class="sec"><td colspan="3">Target margin ${pct(S.params.targetMargin)}</td></tr>
+   <tr><td>Biaya maksimum agar target tercapai</td><td class="r">${f0(r.maxCost)}</td><td class="r">${f0(r.prod?r.maxCost/r.prod:null)}</td></tr>
+   <tr><td>Ruang biaya tersisa (+) / kelebihan (−)</td><td class="r">${f0(r.maxCost!=null?r.maxCost-r.cost:null)}</td><td class="r">${f0(r.prod&&r.maxCost!=null?(r.maxCost-r.cost)/r.prod:null)}</td></tr></tbody>`;
+}
+$("sc-chips").addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(!b)return;S.sel=b.dataset.id;renderSim();});
+function upd(fn){const s=curSc();if(!s)return;fn(s);persist();renderSim();}
+const numOrNull=v=>v===""||v==null?null:(isFinite(+v)?+v:null);
+$("s-name").addEventListener("input",e=>{const s=curSc();if(!s)return;s.name=e.target.value;persist();document.querySelector(`.chip[data-id="${s.id}"]`)&&(document.querySelector(`.chip[data-id="${s.id}"]`).textContent=s.name);});
+$("s-mat").addEventListener("change",e=>upd(s=>{s.material=e.target.value;autoFix(s);}));
+$("s-loader").addEventListener("change",e=>upd(s=>{s.loader=e.target.value;autoFix(s);}));
+$("s-hauler").addEventListener("change",e=>upd(s=>{s.hauler=e.target.value;autoFix(s);}));
+$("s-dist").addEventListener("change",e=>upd(s=>{s.dist=+e.target.value;autoName(s);}));
+$("s-ewh").addEventListener("change",e=>upd(s=>s.ewh=+e.target.value||0));
+$("s-cn").addEventListener("change",e=>upd(s=>s.cn=e.target.value.trim()));
+$("s-dozer").addEventListener("change",e=>upd(s=>s.dozer=e.target.value.trim()));
+$("s-dqty").addEventListener("change",e=>upd(s=>s.dozerQty=+e.target.value||0));
+$("s-dewh").addEventListener("change",e=>upd(s=>s.dozerEwh=numOrNull(e.target.value)));
+$("s-haulqty").addEventListener("change",e=>upd(s=>s.haulQty=numOrNull(e.target.value)));
+$("s-pty").addEventListener("change",e=>upd(s=>s.pty=numOrNull(e.target.value)));
+function autoName(s){if(!s._custom)s.name=s.loader+" × "+s.hauler+" · "+f0(s.dist)+" m"+(s.material!=="OB"?" · "+s.material:"");}
+$("s-name").addEventListener("change",()=>{const s=curSc();if(s){s._custom=true;persist();}});
+function autoFix(s){const combos=Object.values(S.data.mf).filter(c=>c.material===norm(s.material));
+  if(!combos.some(c=>norm(c.loader)===norm(s.loader))&&combos[0])s.loader=combos[0].loader;
+  const hs=combos.filter(c=>norm(c.loader)===norm(s.loader));if(!hs.some(c=>norm(c.hauler)===norm(s.hauler))&&hs[0])s.hauler=hs[0].hauler;
+  const e=mfEntry(s);if(e&&!e.dist.includes(s.dist)){const d=e.dist.find(x=>x>=s.dist);s.dist=d!=null?d:e.dist[e.dist.length-1];}autoName(s);}
+$("btn-add").addEventListener("click",()=>{if(!S.data)return toast("Impor raw data terlebih dulu");
+  const s={id:uid(),name:"",material:IDX.mats.includes("OB")?"OB":IDX.mats[0],loader:"",hauler:"",dist:1000,ewh:15,cn:"",dozer:"",dozerQty:0,dozerEwh:null,haulQty:null,pty:null};
+  const last=S.scenarios[S.scenarios.length-1];if(last){s.dozer=last.dozer;s.dozerQty=last.dozerQty;s.ewh=last.ewh;}
+  autoFix(s);S.scenarios.push(s);S.sel=s.id;persist();renderSim();toast("Skenario ditambahkan");});
+$("btn-dup").addEventListener("click",()=>{const s=curSc();if(!s)return;const c={...s,id:uid(),name:s.name+" (salin)",_custom:true};S.scenarios.splice(S.scenarios.indexOf(s)+1,0,c);S.sel=c.id;persist();renderSim();});
+$("btn-del").addEventListener("click",e=>{const b=e.currentTarget;const s=curSc();if(!s)return;
+  if(!b.classList.contains("confirm")){b.classList.add("confirm");b.textContent="Yakin hapus?";setTimeout(()=>{b.classList.remove("confirm");b.textContent="Hapus";},3000);return;}
+  b.classList.remove("confirm");b.textContent="Hapus";S.scenarios=S.scenarios.filter(x=>x!==s);S.sel=S.scenarios[0]?.id||null;persist();renderSim();toast("Skenario dihapus");});
+
+// ---------- Analisa jarak ----------
+function renderDist(){
+  const sc=S.data?S.scenarios.filter(s=>mfEntry(s)):[];
+  if(!sc.length){$("dist-chart").innerHTML=`<div class="empty">${S.data?"Belum ada skenario dengan data Match Factor.":"Impor raw data terlebih dulu."}</div>`;$("dist-legend").innerHTML="";$("dist-table").innerHTML="";$("dist-sc").innerHTML="";return;}
+  if(!S.distSel)S.distSel=new Set(sc.slice(0,6).map(s=>s.id));
+  const cols=["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
+  $("dist-legend").innerHTML=sc.map((s,i)=>`<label><input type="checkbox" data-id="${s.id}"${S.distSel.has(s.id)?" checked":""}><i style="background:var(${cols[i%8]})"></i>${esc(s.name)}</label>`).join("");
+  const sel=sc.filter(s=>S.distSel.has(s.id));
+  const series=sel.map(s=>{const i=sc.indexOf(s);const e=mfEntry(s);return{s,col:`var(${cols[i%8]})`,pts:e.dist.map(d=>{const r=calc(s,d);return{d,v:r.cpb,rv:r.rpb};}).filter(p=>isNum(p.v))};}).filter(x=>x.pts.length);
+  const box=$("dist-chart");
+  if(!series.length){box.innerHTML=`<div class="empty">Centang minimal satu skenario.</div>`;}
+  else{
+    const W=900,H=360,ml=64,mr=20,mt=16,mb=40;const all=series.flatMap(x=>x.pts);const rev=series[0].pts;
+    const dmin=Math.min(...all.map(p=>p.d)),dmax=Math.max(...all.map(p=>p.d));
+    let hi=Math.max(...all.map(p=>p.v),...rev.map(p=>p.rv||0));const step=niceStep(hi/5);hi=Math.ceil(hi*1.05/step)*step;
+    const x=d=>ml+(d-dmin)/((dmax-dmin)||1)*(W-ml-mr),y=v=>mt+(H-mt-mb)*(1-v/hi);let g="";
+    for(let v=0;v<=hi+1e-6;v+=step)g+=`<line x1="${ml}" x2="${W-mr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${ml-8}" y="${y(v)+4}" font-size="11" text-anchor="end" fill="var(--muted)" font-family="var(--f-mono)">${nf0.format(v/1000)}rb</text>`;
+    const dstep=niceStep((dmax-dmin)/8);for(let d=Math.ceil(dmin/dstep)*dstep;d<=dmax;d+=dstep)g+=`<text x="${x(d)}" y="${H-mb+18}" font-size="11" text-anchor="middle" fill="var(--muted)" font-family="var(--f-mono)">${nf0.format(d)}</text>`;
+    g+=`<text x="${(ml+W-mr)/2}" y="${H-6}" font-size="11" text-anchor="middle" fill="var(--muted)">Jarak (m)</text>`;
+    g+=`<path d="${rev.filter(p=>isNum(p.rv)).map((p,i)=>(i?"L":"M")+x(p.d)+" "+y(p.rv)).join(" ")}" fill="none" stroke="var(--rev)" stroke-width="1.8" stroke-dasharray="6 4"/>`;
+    series.forEach(sr=>{g+=`<path d="${sr.pts.map((p,i)=>(i?"L":"M")+x(p.d).toFixed(1)+" "+y(p.v).toFixed(1)).join(" ")}" fill="none" stroke="${sr.col}" stroke-width="2.2" stroke-linejoin="round"/>`;
+      sr.pts.forEach(p=>{const cur=p.d===sr.s.dist;g+=`<circle cx="${x(p.d)}" cy="${y(p.v)}" r="${cur?5.5:2.2}" fill="${cur?sr.col:"var(--surface)"}" stroke="${sr.col}" stroke-width="${cur?2:1.2}" data-tip="${esc(sr.s.loader+" × "+sr.s.hauler)}<br>${nf0.format(p.d)} m: <b>${f0(p.v)} Rp/BCM</b>${p.rv?"<br>revenue "+f0(p.rv):""}"/>`;});});
+    box.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost per BCM terhadap jarak">${g}</svg>`;}
+  // table
+  const ds=$("dist-sc");const curId=ds.value&&sc.some(s=>s.id===ds.value)?ds.value:(S.sel&&sc.some(s=>s.id===S.sel)?S.sel:sc[0].id);
+  ds.innerHTML=sc.map(s=>`<option value="${s.id}"${s.id===curId?" selected":""}>${esc(s.name)}</option>`).join("");
+  const s=sc.find(x=>x.id===curId);const e=mfEntry(s);
+  $("dist-table").innerHTML=`<thead><tr><th class="r">Jarak (m)</th><th class="r">Pty loader</th><th class="r">Qty hauler</th><th class="r">Prod/hari</th><th class="r">Loading/BCM</th><th class="r">Hauling/BCM</th><th class="r">Dozing/BCM</th><th class="r">Total/BCM</th><th class="r">Revenue/BCM</th><th class="r">Margin/BCM</th><th class="r">Margin %</th><th>Status</th></tr></thead><tbody>`+
+   e.dist.map(d=>{const r=calc(s,d);return`<tr${d===s.dist?' class="hl"':""}><td class="r">${f0(d)}</td><td class="r">${f0(r.pty)}</td><td class="r">${f0(r.need)}</td><td class="r">${f0(r.prod)}</td><td class="r">${f0(r.L.perBcm)}</td><td class="r">${f0(r.H.perBcm)}</td><td class="r">${f0(r.Z.perBcm)}</td><td class="r"><b>${f0(r.cpb)}</b></td><td class="r">${f0(r.rpb)}</td><td class="r">${f0(r.mpb)}</td><td class="r">${pct(r.mPct)}</td><td>${pill(r)}</td></tr>`;}).join("")+"</tbody>";
+}
+$("dist-legend").addEventListener("change",e=>{const id=e.target.dataset.id;if(!id)return;e.target.checked?S.distSel.add(id):S.distSel.delete(id);renderDist();});
+$("dist-sc").addEventListener("change",renderDist);
+
+// ---------- Data & parameter ----------
+const PARDEF=[["fuelPrice","Harga solar (Rp/liter)","Rate Cost Fuel"],["waste","Tarif waste removal (Rp/BCM, ≤ jarak dasar)","OB & TS"],["wasteOver","Overdistance waste (Rp/BCM/100 m)",""],["mud","Tarif mud handling (Rp/BCM)","MD"],["mudOver","Overdistance mud (Rp/BCM/100 m)",""],["coalGet","Coal getting (Rp/ton)","CG"],["coalHaul","Coal hauling (Rp/ton, ≤ jarak dasar)",""],["coalOver","Overdistance coal (Rp/ton/100 m)",""],["baseDist","Jarak dasar tarif (m)","overdistance dihitung di atas jarak ini"],["targetMargin","Target margin (%)",""],["mpRate","Biaya MP (Rp/jam/unit)","auto dari P_MP"],["rmMonths","Pembagi bulan RM aktual","auto = bulan berisi data"],["dozerRatio","EWH dozer ÷ EWH loader","default Excel 0,5"]];
+function renderData(){
+  // import status
+  const m=S.data?.meta;$("imp-sim").checked=!S.scenarios.length;
+  $("imp-status").innerHTML=m?`<div class="tbl-wrap"><table><thead><tr><th>Sheet</th><th>Hasil baca</th></tr></thead><tbody>${Object.entries(m.report).map(([k,v])=>`<tr><td>${esc(k)}</td><td><span class="pill ${v.ok?"good":"bad"}">${v.ok?"OK":"Cek"}</span> ${esc(v.msg)}</td></tr>`).join("")}</tbody></table></div>`:"";
+  // params
+  $("par-table").innerHTML=`<thead><tr><th>Parameter</th><th class="r">Nilai</th></tr></thead><tbody>`+PARDEF.map(([k,l,h])=>{let v=S.params[k];let ph="";
+    if(k==="mpRate")ph=f0(S.data?.mpRate);if(k==="rmMonths")ph=String(S.data?.rm?.monthsWithData||9);
+    if(k==="targetMargin")v=v!=null?v*100:null;
+    if(v!=null)v=Math.round(v*100)/100;
+    return`<tr><td>${l}${h?`<div class="small muted">${esc(h)}</div>`:""}</td><td class="r"><input type="number" step="any" data-par="${k}" value="${v==null?"":v}" placeholder="${esc(ph)}" style="width:130px"></td></tr>`;}).join("")+"</tbody>";
+  // EGI table
+  if(!S.data){$("egi-table").innerHTML=`<tbody><tr><td class="muted">Impor raw data terlebih dulu.</td></tr></tbody>`;$("mf-table").innerHTML="";$("mf-count").textContent="";return;}
+  renderEgi();
+  const mf=Object.values(S.data.mf);$("mf-count").textContent=mf.length+" kombinasi";
+  $("mf-table").innerHTML=`<thead><tr><th>Loader</th><th>Hauler</th><th>Mat.</th><th class="r">Jarak</th><th class="r">Pty (BCM/jam)</th><th class="r">Qty hauler</th></tr></thead><tbody>`+mf.map(c=>{const p=(c.pty||[]).filter(isNum),q=(c.qty||[]).filter(isNum);return`<tr><td>${esc(c.loader)}</td><td>${esc(c.hauler)}</td><td>${esc(c.material)}</td><td class="r">${f0(c.dist[0])}–${f0(c.dist[c.dist.length-1])}</td><td class="r">${p.length?f0(Math.min(...p))+(Math.max(...p)!==Math.min(...p)?"–"+f0(Math.max(...p)):""):"–"}</td><td class="r">${q.length?f0(Math.min(...q))+"–"+f0(Math.max(...q)):"–"}</td></tr>`;}).join("")+"</tbody>";
+}
+function renderEgi(){
+  const q=norm($("egi-q").value);const onlyUsed=$("egi-used").checked;
+  const used=new Set(S.scenarios.flatMap(s=>[norm(s.loader),norm(s.hauler),norm(s.dozer)]));
+  const names=Object.keys(IDX.egi).filter(k=>(!q||k.includes(q))&&(!onlyUsed||used.has(k))).sort();
+  const cell=(k,fld,dataV,o)=>`<td class="r ovr"><input type="number" step="any" data-egi="${esc(k)}" data-f="${fld}" value="${o[fld]!=null?o[fld]:""}" placeholder="${isNum(dataV)?nf0.format(Math.round(dataV)):"–"}" class="${o[fld]!=null?"set":""}" aria-label="Override ${fld} ${esc(k)}"></td>`;
+  $("egi-table").innerHTML=`<thead><tr><th>EGI</th><th>Tipe</th><th class="r">Unit POP</th><th class="r">Plan FC (L/jam)</th><th class="r">RM per hari (Rp)</th><th class="r">Depresiasi per hari (Rp)</th><th class="r">Dasar data</th></tr></thead><tbody>`+
+   (names.length?names.map(k=>{const x=IDX.egi[k];const v=egiVal(k);return`<tr><td><b>${esc(x.name)}</b></td><td class="muted">${esc(x.type)}</td><td class="r">${x.units}</td>${cell(k,"fc",v.fcD,v.o)}${cell(k,"rm",v.rmD,v.o)}${cell(k,"dep",v.depD,v.o)}<td class="r small muted">FC ${x.fcV.length} · RM ${x.rmV.length} · OW ${x.owV.length} unit</td></tr>`;}).join(""):`<tr><td colspan="7" class="muted">Tidak ada EGI yang cocok.</td></tr>`)+"</tbody>";
+}
+$("egi-q").addEventListener("input",()=>S.data&&renderEgi());$("egi-used").addEventListener("change",()=>S.data&&renderEgi());
+$("egi-table").addEventListener("change",e=>{const el=e.target;if(!el.dataset.egi)return;const k=el.dataset.egi,f=el.dataset.f;const o=S.overrides[k]||(S.overrides[k]={});
+  const v=numOrNull(el.value);if(v==null)delete o[f];else o[f]=v;if(!Object.keys(o).length)delete S.overrides[k];el.classList.toggle("set",v!=null);persist();toast(v==null?"Override dihapus, kembali ke data":"Override disimpan");});
+$("par-table").addEventListener("change",e=>{const k=e.target.dataset.par;if(!k)return;let v=numOrNull(e.target.value);
+  if(k==="targetMargin"&&v!=null)v=v/100;if(v==null&&!["mpRate","rmMonths"].includes(k))v=(S.excelParams&&S.excelParams[k]!=null)?S.excelParams[k]:DEFAULT_PARAMS[k];
+  S.params[k]=v;persist();toast("Parameter disimpan");});
+$("btn-reset-par").addEventListener("click",()=>{S.params={...DEFAULT_PARAMS,...(S.excelParams||{})};persist();renderData();toast("Parameter dikembalikan ke nilai Excel");});
+
+// import
+async function importFile(file){
+  if(typeof XLSX==="undefined"){$("libfail").hidden=false;return;}
+  $("imp-status").innerHTML=`<div class="muted small">Membaca ${esc(file.name)}…</div>`;
+  try{const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:"array",cellFormula:false,cellHTML:false,cellStyles:false,sheets:["POP Unit","P_FC","P_OW","Cost Act by Unit","P_MP","Match Factor Pdty","Simulasi"]});
+    const{D,rep}=parseWorkbook(wb);
+    if(!Object.keys(D.mf).length||!D.units.length){$("imp-status").innerHTML=`<div class="banner bad">File tidak bisa dipakai: ${!D.units.length?"sheet POP Unit kosong / tidak ditemukan. ":""}${!Object.keys(D.mf).length?"tabel Match Factor tidak terbaca.":""}</div>`;return;}
+    const takeSim=$("imp-sim").checked&&D.sim;
+    D.meta={fileName:file.name,importedAt:Date.now(),report:rep};
+    S.data=D;
+    if(D.sim&&D.sim.params){S.excelParams=D.sim.params;Object.keys(D.sim.params).forEach(k=>{if(S.params[k]==null)S.params[k]=D.sim.params[k];});}
+    if(takeSim){S.params={...DEFAULT_PARAMS,...D.sim.params};if(D.sim.scenarios.length){S.scenarios=D.sim.scenarios;S.sel=S.scenarios[0].id;S.distSel=null;}}
+    await store.set("data",D);persist();buildIndex();renderAll();
+    toast("Raw data diperbarui dari "+file.name+(takeSim?" · skenario & parameter ikut diambil":""));
+  }catch(err){console.error(err);$("imp-status").innerHTML=`<div class="banner bad">Gagal membaca file: ${esc(err.message||err)}. Pastikan file berformat .xlsx dan tidak sedang dikunci.</div>`;}
+}
+$("file-xlsx").addEventListener("change",e=>{const f=e.target.files[0];if(f)importFile(f);e.target.value="";});
+const drop=$("drop");["dragenter","dragover"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)importFile(f);});
+
+// backup
+$("btn-backup").addEventListener("click",()=>{const b={app:"simulator-cost-bcm",version:1,savedAt:new Date().toISOString(),data:S.data,params:S.params,excelParams:S.excelParams,scenarios:S.scenarios,overrides:S.overrides};
+  download("backup-cost-bcm_"+new Date().toISOString().slice(0,10)+".json",new Blob([JSON.stringify(b)],{type:"application/json"}));});
+$("file-json").addEventListener("change",async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;
+  try{const b=JSON.parse(await f.text());if(b.app!=="simulator-cost-bcm")throw new Error("bukan file backup aplikasi ini");
+    S.data=b.data||null;S.params={...DEFAULT_PARAMS,...(b.params||{})};S.excelParams=b.excelParams||null;S.scenarios=b.scenarios||[];S.overrides=b.overrides||{};S.sel=S.scenarios[0]?.id||null;S.distSel=null;
+    await store.set("data",S.data);persist();buildIndex();renderAll();toast("Backup dipulihkan");}
+  catch(err){toast("Gagal memulihkan: "+err.message);}});
+$("btn-wipe").addEventListener("click",async e=>{const b=e.currentTarget;
+  if(!b.classList.contains("confirm")){b.classList.add("confirm");b.textContent="Yakin? Semua data & skenario hilang";setTimeout(()=>{b.classList.remove("confirm");b.textContent="Hapus semua data";},4000);return;}
+  b.classList.remove("confirm");b.textContent="Hapus semua data";
+  for(const k of["data","params","scenarios","overrides","excelParams"])await store.del(k);
+  S.data=null;S.params={...DEFAULT_PARAMS};S.excelParams=null;S.scenarios=[];S.overrides={};S.sel=null;IDX=null;renderAll();toast("Semua data dihapus dari browser ini");});
+
+// export xlsx
+$("btn-export-xlsx").addEventListener("click",()=>{
+  if(typeof XLSX==="undefined")return toast("Pembaca Excel belum dimuat");
+  if(!S.data||!S.scenarios.length)return toast("Belum ada skenario untuk diekspor");
+  const rs=S.scenarios.map(s=>calc(s));const wb=XLSX.utils.book_new();
+  const sum=[["Skenario","Material","Jarak (m)","Loader","Hauler","Qty hauler","Plan pty (BCM/jam)","EWH","Plan prod (BCM/hari)","Cost loading","Cost hauling","Cost dozing","Total cost","Loading/BCM","Hauling/BCM","Dozing/BCM","Total/BCM","Revenue","Revenue/BCM","Margin","Margin/BCM","Margin %","Status"]];
+  rs.forEach(r=>sum.push([r.s.name,r.s.material,r.dist,r.s.loader,r.s.hauler,r.need,r.pty,r.ewh,r.prod,r.L.total,r.H.total,r.Z.total,r.cost,r.L.perBcm,r.H.perBcm,r.Z.perBcm,r.cpb,r.rev,r.rpb,r.margin,r.mpb,r.mPct,status(r)[1]]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),"Ringkasan");
+  const det=[["Skenario","Bagian","EGI","Qty","EWH","FC (L/jam)","Solar (L)","BBM","RM","MP","Depresiasi","Total","Per BCM"]];
+  rs.forEach(r=>[["Loading",r.L],["Hauling",r.H],["Dozing",r.Z]].forEach(([n,b])=>det.push([r.s.name,n,b.egi,b.qty,b.hours,b.fc,b.fuelL,b.fuelCost,b.rm,b.mp,b.dep,b.total,b.perBcm])));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),"Detail");
+  const used=[...new Set(S.scenarios.flatMap(s=>[s.loader,s.hauler,s.dozer]).filter(Boolean))];
+  const eg=[["EGI","Plan FC (L/jam)","RM per hari","Depresiasi per hari","Override?"]];used.forEach(n=>{const v=egiVal(n);eg.push([n,v.fc,v.rm,v.dep,Object.keys(v.o).length?"ya":""]);});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(eg),"Parameter EGI");
+  const pr=[["Parameter","Nilai"]];PARDEF.forEach(([k,l])=>pr.push([l,k==="mpRate"?mpRate():k==="rmMonths"?months():S.params[k]]));pr.push(["Sumber data",S.data.meta.fileName]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(pr),"Parameter");
+  XLSX.writeFile(wb,"Hasil Simulasi Cost per BCM "+new Date().toISOString().slice(0,10)+".xlsx");});
+
+// tooltip for charts
+document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");const tip=$("tip");if(!t){tip.hidden=true;return;}tip.innerHTML=t.getAttribute("data-tip");tip.hidden=false;tip.style.left=Math.min(e.clientX+14,innerWidth-tip.offsetWidth-8)+"px";tip.style.top=(e.clientY-tip.offsetHeight-10)+"px";});
+
+// ================= boot =================
+(async()=>{
+  if(typeof XLSX==="undefined")$("libfail").hidden=false;
+  S.data=await store.get("data")||null;S.params={...DEFAULT_PARAMS,...(await store.get("params")||{})};S.excelParams=await store.get("excelParams")||null;
+  S.scenarios=await store.get("scenarios")||[];S.overrides=await store.get("overrides")||{};S.sel=S.scenarios[0]?.id||null;
+  buildIndex();setTab(location.hash.slice(1)||(S.data?"ringkasan":"data"));
+})();
+window.__costbcm={importFile,S,calc};
+})();
+</script>
+</body>
+</html>
