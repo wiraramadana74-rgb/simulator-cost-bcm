@@ -2,7 +2,7 @@
 
 Aplikasi web untuk menghitung **Cost per BCM** (loading, hauling, dozing) per kombinasi fleet loader × hauler × material × jarak, beserta revenue dan margin.
 
-**Buka aplikasi:** `https://<username>.github.io/<nama-repo>/`
+**Buka aplikasi:** https://wiraramadana74-rgb.github.io/simulator-cost-bcm/
 
 ## Cara pakai
 1. Buka aplikasi, masuk ke menu **Data & Parameter**.
