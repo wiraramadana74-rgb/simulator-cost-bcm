@@ -7,13 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
 /* Layout: control-room sheet. Header + tab bar, then one working view per tab. */
 :root{
   --bg:#dcecfa; --surface:#ffffff; --sunk:#e8f2fc; --line:#bcd4ea; --ink:#14212e; --muted:#53657a;
   --accent:#b8740a; --accent-ink:#ffffff; --accent-soft:#f6e7cc;
   --good:#2f7d4f; --good-soft:#dcefe3; --warn:#a86a00; --warn-soft:#f8ead0; --bad:#b2392b; --bad-soft:#f6dcd8;
-  --s-load:#1f5f8b; --s-haul:#b8740a; --s-doz:#6b7f3a; --rev:#b2392b;
+  --s-load:#1f5f8b; --s-haul:#b8740a; --s-doz:#6b7f3a; --rev:#b2392b; --line-plan:#7f9cbb;
   --c1:#1f5f8b; --c2:#b8740a; --c3:#2f7d4f; --c4:#8a3f8f; --c5:#b2392b; --c6:#3c8c8c; --c7:#6b7f3a; --c8:#5b6863;
   --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -25,7 +26,7 @@
   --bg:#0f1c2b; --surface:#172637; --sunk:#1e3044; --line:#2f4660; --ink:#e3ecf5; --muted:#93a8bf;
   --accent:#e0a33a; --accent-ink:#1a1206; --accent-soft:#3a2d14;
   --good:#5fbf86; --good-soft:#1d3527; --warn:#e3a440; --warn-soft:#3a2c13; --bad:#ec7a6b; --bad-soft:#3d1f1b;
-  --s-load:#6fb2e0; --s-haul:#e0a33a; --s-doz:#a9c26a; --rev:#ec7a6b;
+  --s-load:#6fb2e0; --s-haul:#e0a33a; --s-doz:#a9c26a; --rev:#ec7a6b; --line-plan:#8fb0d4;
   --c1:#6fb2e0; --c2:#e0a33a; --c3:#5fbf86; --c4:#c98bd0; --c5:#ec7a6b; --c6:#6cc4c4; --c7:#a9c26a; --c8:#a4b1ab;
   --bg-top:#14304d; --hdr1:#0a2a4a; --hdr2:#16558e; --hdr-ink:#ffffff; --hdr-sub:#a9c6e2;
   --shadow:0 1px 2px rgba(0,0,0,.25),0 6px 18px rgba(0,0,0,.25);
@@ -131,6 +132,7 @@ table.heat td.na{color:var(--muted);text-align:center}
     <a href="#simulasi" data-tab="simulasi">Simulasi</a>
     <a href="#jarak" data-tab="jarak">Analisa Jarak</a>
     <a href="#fleet" data-tab="fleet">Fleet Terbaik</a>
+    <a href="#aktual" data-tab="aktual">Plan vs Actual</a>
     <a href="#data" data-tab="data">Data &amp; Parameter</a>
   </nav>
 
@@ -138,6 +140,7 @@ table.heat td.na{color:var(--muted);text-align:center}
     <span>Belum ada raw data. Impor file Excel (misalnya <b>Simulasi Cost per BCM.xlsx</b>) di menu Data &amp; Parameter.</span>
     <a class="btn primary" href="#data">Impor Excel</a>
   </div>
+  <div id="cloud-banner" class="banner" hidden></div>
   <div id="libfail" class="banner bad" hidden>Pembaca Excel (SheetJS) gagal dimuat. Pastikan komputer terhubung ke internet, lalu muat ulang halaman.</div>
 
   <!-- RINGKASAN -->
@@ -195,6 +198,17 @@ table.heat td.na{color:var(--muted);text-align:center}
         <div class="tbl-wrap"><table id="rev-table"></table></div>
       </div>
     </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Analisa sensitivitas</h2>
+        <div class="row">
+          <div class="field"><label class="label" for="sens-pct">Perubahan biaya / produktivitas (±%)</label><input type="number" id="sens-pct" min="1" max="50" step="1" value="10" style="width:90px"></div>
+          <div class="field"><label class="label" for="sens-ewh">Perubahan EWH (± jam)</label><input type="number" id="sens-ewh" min="0.5" max="6" step="0.5" value="1" style="width:90px"></div>
+          <div class="field"><label class="label" for="sens-dist">Perubahan jarak (± m)</label><input type="number" id="sens-dist" min="100" max="2000" step="100" value="500" style="width:90px"></div>
+        </div></div>
+      <div class="legend"><span><i style="background:var(--good)"></i>Cost/BCM turun</span><span><i style="background:var(--bad)"></i>Cost/BCM naik</span><span>Garis tengah = Cost/BCM skenario saat ini. Faktor diurutkan dari dampak terbesar.</span></div>
+      <div class="chart" id="sens-chart"></div>
+      <div class="tbl-wrap"><table id="sens-table"></table></div>
+    </div>
   </section>
 
   <!-- JARAK -->
@@ -238,8 +252,72 @@ table.heat td.na{color:var(--muted);text-align:center}
     <div id="fleet-missing" class="small muted"></div>
   </section>
 
+  <!-- PLAN VS ACTUAL -->
+  <section data-view="aktual" class="view" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>Plan vs Actual</h2><span class="small muted">Aktual bulanan dibandingkan dengan Cost/BCM rencana untuk fleet &amp; jarak yang sama</span></div>
+      <div class="row">
+        <div class="field"><label class="label" for="pa-period">Periode</label><select id="pa-period"></select></div>
+        <div class="field"><label class="label" for="pa-pit">Pit</label><select id="pa-pit"></select></div>
+        <div class="field"><label class="label" for="pa-ewh">Plan EWH (jam/hari)</label><input type="number" id="pa-ewh" min="0" step="0.5" style="width:110px"></div>
+        <div class="field"><label class="label" for="pa-dozer">Dozer plan (EGI)</label><input id="pa-dozer" list="egi-list" style="width:140px"></div>
+        <div class="field"><label class="label" for="pa-dqty">Qty dozer</label><input type="number" id="pa-dqty" min="0" step="1" style="width:80px"></div>
+      </div>
+    </div>
+    <div id="pa-empty" class="panel" hidden>
+      <div class="empty">Belum ada data aktual. Unduh template, isi BCM dan biaya aktual per bulan per fleet, lalu impor di bawah.</div>
+    </div>
+    <div class="kpis" id="pa-kpis"></div>
+    <div class="grid2" id="pa-charts">
+      <div class="panel">
+        <div class="panel-head"><h2>Komponen biaya per BCM</h2>
+          <div class="legend"><span><i style="background:var(--line-plan)"></i>Plan</span><span><i style="background:var(--accent)"></i>Actual</span></div></div>
+        <div class="chart" id="pa-comp"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Tren bulanan</h2>
+          <div class="legend"><span><i style="background:var(--line-plan);height:3px"></i>Plan Cost/BCM</span><span><i style="background:var(--accent);height:3px"></i>Actual Cost/BCM</span></div></div>
+        <div class="chart" id="pa-trend"></div>
+      </div>
+    </div>
+    <div class="panel" id="pa-detail">
+      <div class="panel-head"><h2>Detail per fleet</h2><span class="small muted">Varians = actual − plan. Positif (merah) berarti lebih boros dari rencana.</span></div>
+      <div class="tbl-wrap"><table id="pa-table"></table></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>Impor data aktual</h2><button type="button" id="btn-pa-template">Unduh template Excel</button></div>
+        <div class="drop" id="pa-drop">
+          <b>Tarik file Excel aktual ke sini</b>
+          <label class="btn primary" for="file-pa">Pilih file .xlsx</label>
+          <input type="file" id="file-pa" accept=".xlsx,.xlsm,.xls" hidden>
+          <span class="small muted">Satu baris per bulan per pit per fleet. Mengimpor bulan yang sudah ada akan menggantikan data bulan itu.</span>
+        </div>
+        <div id="pa-status"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Periode tersimpan</h2></div>
+        <div class="tbl-wrap"><table id="pa-periods"></table></div>
+      </div>
+    </div>
+  </section>
+
   <!-- DATA -->
   <section data-view="data" class="view" hidden>
+    <div class="panel" id="cloud-panel">
+      <div class="panel-head"><h2>Database tim</h2><span id="cloud-badge" class="pill none">Belum terhubung</span></div>
+      <div id="cloud-body"></div>
+      <details id="cloud-cfg">
+        <summary class="small muted" style="cursor:pointer">Pengaturan koneksi (untuk admin)</summary>
+        <div class="row" style="margin-top:10px">
+          <div class="field" style="flex:1 1 260px"><label class="label" for="cfg-url">Project URL</label><input id="cfg-url" placeholder="https://xxxx.supabase.co"></div>
+          <div class="field" style="flex:2 1 360px"><label class="label" for="cfg-key">Anon public key</label><input id="cfg-key" placeholder="eyJhbGciOi…"></div>
+          <button type="button" id="btn-cfg-save">Simpan &amp; hubungkan</button>
+          <button type="button" id="btn-cfg-clear" class="ghost">Putuskan</button>
+        </div>
+        <p class="small muted" style="margin:6px 0 0">Anon key memang aman dipakai di halaman publik; keamanan data dijaga oleh aturan akses di database. Jangan pernah memasukkan <i>service_role key</i> di sini.</p>
+      </details>
+    </div>
     <div class="grid2">
       <div class="panel">
         <div class="panel-head"><h2>Impor / perbarui raw data</h2></div>
@@ -316,9 +394,107 @@ const store=(()=>{let dbp=null;const mem={};
 // ================= state =================
 // Tarif & harga sengaja kosong: terisi dari sheet Simulasi saat Excel diimpor, atau diisi manual.
 const DEFAULT_PARAMS={fuelPrice:null,waste:null,wasteOver:null,mud:null,mudOver:null,coalGet:null,coalHaul:null,coalOver:null,targetMargin:0.15,baseDist:1000,rmMonths:null,mpRate:null,dozerRatio:0.5,coalDensity:1.3};
-const S={data:null,params:{...DEFAULT_PARAMS},excelParams:null,scenarios:[],overrides:{},sel:null,distSel:null,tab:"ringkasan"};
+const S={data:null,params:{...DEFAULT_PARAMS},excelParams:null,scenarios:[],overrides:{},actuals:{},sel:null,distSel:null,tab:"ringkasan"};
 let saveT=null;
-function persist(){clearTimeout(saveT);saveT=setTimeout(()=>{store.set("params",S.params);store.set("scenarios",S.scenarios);store.set("overrides",S.overrides);store.set("excelParams",S.excelParams);},300);}
+function persist(){clearTimeout(saveT);saveT=setTimeout(()=>{store.set("params",S.params);store.set("scenarios",S.scenarios);store.set("overrides",S.overrides);store.set("excelParams",S.excelParams);Cloud.sync();},600);}
+
+// ================= database tim (Supabase) =================
+// Diisi setelah proyek Supabase dibuat. Bisa juga diisi lewat menu Data & Parameter → Pengaturan koneksi.
+const SB_CONFIG={url:"",key:""};
+const Cloud={
+  client:null,user:null,role:null,on:false,last:{},status:"off",msg:"",
+  cfg(){try{const c=JSON.parse(localStorage.getItem("sb-config")||"null");if(c&&c.url&&c.key)return c;}catch(e){}return SB_CONFIG.url&&SB_CONFIG.key?SB_CONFIG:null;},
+  canWrite(){return this.on&&(this.role==="admin"||this.role==="editor");},
+  async init(){
+    const c=this.cfg();this.on=false;this.user=null;this.role=null;
+    if(!c){this.status="off";return this.render();}
+    if(typeof supabase==="undefined"){this.status="error";this.msg="Library Supabase gagal dimuat (cek internet).";return this.render();}
+    try{
+      this.client=supabase.createClient(c.url,c.key,{auth:{flowType:"pkce",detectSessionInUrl:true,persistSession:true,storageKey:"costbcm-auth"}});
+      const{data}=await this.client.auth.getSession();
+      if(/[?&]code=/.test(location.search))history.replaceState(null,"",location.pathname+location.hash);
+      this.user=data.session?.user||null;
+      if(!this.user){this.status="login";return this.render();}
+      const{data:m,error}=await this.client.from("members").select("role").eq("email",this.user.email.toLowerCase()).maybeSingle();
+      if(error)throw error;
+      if(!m){this.status="nomember";return this.render();}
+      this.role=m.role;this.on=true;this.status="on";this.render();
+      await this.load();
+    }catch(err){console.error(err);this.status="error";this.msg=err.message||String(err);this.render();}
+  },
+  async load(){
+    if(!this.on)return;
+    const[{data:kv,error:e1},{data:ac,error:e2}]=await Promise.all([this.client.from("app_data").select("key,value,updated_at,updated_by"),this.client.from("actuals").select("id,data,updated_at,updated_by")]);
+    if(e1||e2)throw(e1||e2);
+    const map={};kv.forEach(r=>map[r.key]=r);
+    S.data=map.rawdata?.value||null;if(S.data&&map.rawdata){S.data.meta=Object.assign({},S.data.meta,{by:map.rawdata.updated_by,cloudAt:map.rawdata.updated_at});}
+    S.params={...DEFAULT_PARAMS,...(map.params?.value||{})};S.excelParams=map.excelParams?.value||null;S.overrides=map.overrides?.value||{};
+    S.scenarios=kv.filter(r=>r.key.startsWith("scenario:")).map(r=>r.value).sort((a,b)=>(a.ord??0)-(b.ord??0)).map(s=>{const c={...s};delete c.ord;return c;});
+    S.actuals={};ac.forEach(r=>{S.actuals[r.id]=Object.assign({},r.data,{by:r.updated_by});});
+    if(!S.scenarios.some(s=>s.id===S.sel))S.sel=S.scenarios[0]?.id||null;S.distSel=null;
+    this.snapshot();
+    await store.set("data",S.data);await store.set("actuals",S.actuals);store.set("params",S.params);store.set("scenarios",S.scenarios);store.set("overrides",S.overrides);
+    this.loadedAt=Date.now();buildIndex();renderAll();this.render();
+  },
+  snapshot(){this.last={params:JSON.stringify(S.params),overrides:JSON.stringify(S.overrides),excelParams:JSON.stringify(S.excelParams),sc:{}};S.scenarios.forEach((s,i)=>this.last.sc[s.id]=JSON.stringify({...s,ord:i}));},
+  async put(key,value){const{error}=await this.client.from("app_data").upsert({key,value,updated_at:new Date().toISOString(),updated_by:this.user.email});if(error)throw error;},
+  async sync(){
+    if(!this.canWrite())return;
+    try{
+      for(const k of["params","overrides","excelParams"]){const j=JSON.stringify(S[k]);if(j!==this.last[k]){await this.put(k,S[k]);this.last[k]=j;}}
+      const now={};S.scenarios.forEach((s,i)=>now[s.id]=JSON.stringify({...s,ord:i}));
+      for(const[id,j]of Object.entries(now))if(j!==this.last.sc[id]){await this.put("scenario:"+id,JSON.parse(j));this.last.sc[id]=j;}
+      for(const id of Object.keys(this.last.sc))if(!(id in now)){const{error}=await this.client.from("app_data").delete().eq("key","scenario:"+id);if(error)throw error;delete this.last.sc[id];}
+      this.savedAt=Date.now();this.render();
+    }catch(err){console.error(err);toast("Gagal menyimpan ke database tim: "+(err.message||err));}
+  },
+  async saveRaw(D){if(!this.canWrite())return;try{await this.put("rawdata",D);await this.sync();}catch(err){toast("Raw data tidak tersimpan ke database tim: "+(err.message||err));}},
+  async saveActual(p,obj){if(!this.canWrite())return;const{by,...data}=obj;const{error}=await this.client.from("actuals").upsert({id:p,data,updated_at:new Date().toISOString(),updated_by:this.user.email});if(error)toast("Data aktual tidak tersimpan ke database tim: "+error.message);},
+  async deleteActual(p){if(!this.canWrite())return;const{error}=await this.client.from("actuals").delete().eq("id",p);if(error)toast("Gagal menghapus di database tim: "+error.message);},
+  async login(email){const{error}=await this.client.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});if(error)throw error;},
+  async logout(){await this.client.auth.signOut();location.reload();},
+  async members(){const{data,error}=await this.client.from("members").select("email,role").order("email");if(error)throw error;return data;},
+  async setMember(email,role){const{error}=await this.client.from("members").upsert({email:email.toLowerCase(),role});if(error)throw error;},
+  async delMember(email){const{error}=await this.client.from("members").delete().eq("email",email);if(error)throw error;},
+  render(){
+    const badge=$("cloud-badge"),body=$("cloud-body"),ban=$("cloud-banner");if(!badge)return;
+    const c=this.cfg();$("cfg-url").value=c?.url||"";$("cfg-key").value=c?.key||"";
+    const RL={admin:"Admin",editor:"Editor",viewer:"Viewer (lihat saja)"};
+    ban.hidden=true;
+    if(this.status==="off"){badge.className="pill none";badge.textContent="Belum terhubung";body.innerHTML=`<p class="small muted" style="margin:0">Saat ini data tersimpan di browser ini saja. Hubungkan database Supabase (lihat <b>Pengaturan koneksi</b>) agar seluruh tim memakai data yang sama.</p>`;$("cloud-cfg").open=true;}
+    else if(this.status==="error"){badge.className="pill bad";badge.textContent="Gagal terhubung";body.innerHTML=`<p class="small" style="margin:0;color:var(--bad)">${esc(this.msg)}</p>`;}
+    else if(this.status==="login"){badge.className="pill warn";badge.textContent="Perlu login";
+      body.innerHTML=`<div class="row"><div class="field" style="flex:1 1 260px"><label class="label" for="login-email">Email kantor / terdaftar</label><input type="email" id="login-email" placeholder="nama@perusahaan.com"></div><button type="button" class="primary" id="btn-login">Kirim link login</button></div><p class="small muted" style="margin:6px 0 0">Link login dikirim ke email. Buka link itu di browser yang sama.</p>`;
+      ban.hidden=false;ban.innerHTML=`<span>Database tim tersedia. Login untuk memakai data bersama.</span><a class="btn primary" href="#data">Login</a>`;}
+    else if(this.status==="nomember"){badge.className="pill bad";badge.textContent="Belum terdaftar";body.innerHTML=`<p class="small" style="margin:0">Anda login sebagai <b>${esc(this.user.email)}</b>, tetapi email ini belum terdaftar sebagai anggota. Minta admin menambahkan email Anda.</p><button type="button" id="btn-logout" style="margin-top:8px">Keluar</button>`;}
+    else if(this.status==="on"){badge.className="pill good";badge.textContent="Terhubung";
+      const m=S.data?.meta;
+      body.innerHTML=`<div class="row" style="justify-content:space-between"><span class="small">Masuk sebagai <b>${esc(this.user.email)}</b> · ${RL[this.role]||esc(this.role)}${m?.cloudAt?` · raw data diperbarui ${new Date(m.cloudAt).toLocaleString("id-ID")} oleh ${esc(m.by||"-")}`:""}${this.savedAt?` · tersimpan ${new Date(this.savedAt).toLocaleTimeString("id-ID")}`:""}</span>
+        <span class="row"><button type="button" id="btn-reload">Muat ulang dari database</button><button type="button" id="btn-logout" class="ghost">Keluar</button></span></div>
+        ${this.role==="admin"?`<div id="members" style="margin-top:12px"></div>`:""}`;
+      if(this.role==="viewer"){ban.hidden=false;ban.innerHTML=`<span>Anda login sebagai <b>viewer</b>. Perubahan skenario dan parameter hanya tersimpan di browser ini, tidak ke database tim.</span>`;}
+      if(this.role==="admin")this.renderMembers();}
+  },
+  async renderMembers(){const box=$("members");if(!box)return;
+    try{const list=await this.members();
+      box.innerHTML=`<h3 style="margin-bottom:6px">Anggota tim</h3><div class="tbl-wrap"><table><thead><tr><th>Email</th><th>Hak akses</th><th></th></tr></thead><tbody>${list.map(m=>`<tr><td>${esc(m.email)}</td><td><select data-mrole="${esc(m.email)}">${["admin","editor","viewer"].map(r=>`<option${r===m.role?" selected":""}>${r}</option>`).join("")}</select></td><td class="r">${m.email.toLowerCase()===this.user.email.toLowerCase()?'<span class="small muted">Anda</span>':`<button type="button" class="ghost danger" data-mdel="${esc(m.email)}">Hapus</button>`}</td></tr>`).join("")}</tbody></table></div>
+        <div class="row" style="margin-top:8px"><input type="email" id="m-email" placeholder="email anggota baru" style="flex:1 1 220px"><select id="m-role"><option>viewer</option><option>editor</option><option>admin</option></select><button type="button" id="btn-madd">Tambah anggota</button></div>
+        <p class="small muted" style="margin:6px 0 0">Admin: kelola anggota &amp; semua data. Editor: impor data, ubah skenario &amp; parameter. Viewer: hanya melihat.</p>`;
+    }catch(err){box.innerHTML=`<p class="small" style="color:var(--bad)">Daftar anggota tidak bisa dimuat: ${esc(err.message||err)}</p>`;}}
+};
+document.addEventListener("click",async e=>{const t=e.target;if(!t.closest)return;
+  if(t.closest("#btn-login")){const em=$("login-email").value.trim();if(!/^\S+@\S+\.\S+$/.test(em))return toast("Isi alamat email yang benar");
+    try{t.disabled=true;await Cloud.login(em);toast("Link login dikirim ke "+em+". Cek email Anda.");}catch(err){toast("Gagal mengirim link: "+(err.message||err));}finally{t.disabled=false;}}
+  else if(t.closest("#btn-logout"))Cloud.logout();
+  else if(t.closest("#btn-reload")){try{await Cloud.load();toast("Data dimuat ulang dari database tim");}catch(err){toast("Gagal memuat: "+(err.message||err));}}
+  else if(t.closest("#btn-madd")){const em=$("m-email").value.trim();if(!/^\S+@\S+\.\S+$/.test(em))return toast("Isi email yang benar");try{await Cloud.setMember(em,$("m-role").value);toast("Anggota ditambahkan");Cloud.renderMembers();}catch(err){toast("Gagal: "+(err.message||err));}}
+  else if(t.closest("[data-mdel]")){const b=t.closest("[data-mdel]");if(!b.classList.contains("confirm")){b.classList.add("confirm");b.textContent="Yakin?";return;}try{await Cloud.delMember(b.dataset.mdel);toast("Anggota dihapus");Cloud.renderMembers();}catch(err){toast("Gagal: "+(err.message||err));}}
+  else if(t.closest("#btn-cfg-save")){const url=$("cfg-url").value.trim().replace(/\/+$/,""),key=$("cfg-key").value.trim();
+    if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url))return toast("Project URL harus berbentuk https://xxxx.supabase.co");if(key.length<40)return toast("Anon key terlalu pendek");
+    try{localStorage.setItem("sb-config",JSON.stringify({url,key}));}catch(err){}toast("Menghubungkan…");await Cloud.init();}
+  else if(t.closest("#btn-cfg-clear")){try{localStorage.removeItem("sb-config");}catch(err){}if(Cloud.client)await Cloud.client.auth.signOut().catch(()=>{});location.reload();}
+});
+document.addEventListener("change",async e=>{const s=e.target.closest&&e.target.closest("[data-mrole]");if(!s)return;try{await Cloud.setMember(s.dataset.mrole,s.value);toast("Hak akses diperbarui");}catch(err){toast("Gagal: "+(err.message||err));Cloud.renderMembers();}});
 
 // ================= Excel parsing =================
 function sheetRows(wb,name){
@@ -462,8 +638,9 @@ function matGroup(m){m=norm(m);if(m==="CG"||m==="COAL")return"coal";if(m==="MD"|
 const MATNAME={OB:"OB (overburden)",TS:"TS (topsoil)",MD:"MD (mud)",CG:"CG (coal getting)"};
 
 // ================= calculation (mengikuti logika sheet Simulasi) =================
-function calc(s,distOverride){
-  const P=S.params;const dist=distOverride!=null?distOverride:s.dist;const warn=[];
+// opt (opsional) untuk analisa sensitivitas: pengali fuel/rm/dep/mp, tanpa mengubah parameter tersimpan.
+function calc(s,distOverride,opt){
+  const P=S.params;const dist=distOverride!=null?distOverride:s.dist;const warn=[];const M=Object.assign({fuel:1,rm:1,dep:1,mp:1},opt||{});
   if(!P.fuelPrice)warn.push("Harga solar belum diisi (menu Data & Parameter).");
   const e=mfEntry(s);const at=mfAt(e,dist);
   if(!e)warn.push("Kombinasi "+s.loader+" × "+s.hauler+" ("+s.material+") tidak ada di Match Factor.");
@@ -471,9 +648,9 @@ function calc(s,distOverride){
   const pty=s.pty!=null?s.pty:(at?at.pty:null);
   const need=s.haulQty!=null?s.haulQty:(at?at.qty:null);
   const ewh=+s.ewh||0;const prod=isNum(pty)?pty*ewh:null;
-  const fuel=+P.fuelPrice||0,mp=mpRate();
+  const fuel=(+P.fuelPrice||0)*M.fuel,mp=mpRate()*M.mp;
   function block(egi,qty,hours){const v=egiVal(egi);if(egi&&(v.fc==null||v.rm==null||v.dep==null))warn.push("Data "+egi+" belum lengkap ("+[v.fc==null?"FC":null,v.rm==null?"RM":null,v.dep==null?"Depre":null].filter(Boolean).join(", ")+").");
-    const fuelL=(v.fc||0)*hours*qty;const b={egi,qty,hours,fc:v.fc,fuelL,fuelCost:fuelL*fuel,rm:(v.rm||0)*qty,mp:hours*mp*qty,dep:(v.dep||0)*qty};
+    const fuelL=(v.fc||0)*hours*qty;const b={egi,qty,hours,fc:v.fc,fuelL,fuelCost:fuelL*fuel,rm:(v.rm||0)*qty*M.rm,mp:hours*mp*qty,dep:(v.dep||0)*qty*M.dep};
     b.total=b.fuelCost+b.rm+b.mp+b.dep;b.perBcm=prod?b.total/prod:null;return b;}
   const L=block(s.loader,1,ewh);
   const H=block(s.hauler,isNum(need)?need:0,ewh);
@@ -496,10 +673,10 @@ const pill=r=>{const[c,t]=status(r);return`<span class="pill ${c}">${t}</span>`;
 // ================= rendering =================
 function renderAll(){
   const has=!!S.data;$("nodata").hidden=has||S.tab==="data";
-  $("datainfo").innerHTML=has?`Data: <b>${esc(S.data.meta.fileName)}</b><br>diimpor ${new Date(S.data.meta.importedAt).toLocaleString("id-ID")}`:"Belum ada data";
-  if(S.tab==="ringkasan")renderSummary();else if(S.tab==="simulasi")renderSim();else if(S.tab==="jarak")renderDist();else if(S.tab==="fleet")renderFleet();else renderData();
+  $("datainfo").innerHTML=(has?`Data: <b>${esc(S.data.meta.fileName)}</b><br>diimpor ${new Date(S.data.meta.importedAt).toLocaleString("id-ID")}`:"Belum ada data")+(Cloud.on?`<br>Database tim · ${esc(Cloud.user.email)}`:"");
+  if(S.tab==="ringkasan")renderSummary();else if(S.tab==="simulasi")renderSim();else if(S.tab==="jarak")renderDist();else if(S.tab==="fleet")renderFleet();else if(S.tab==="aktual")renderPA();else renderData();
 }
-function setTab(t){if(!["ringkasan","simulasi","jarak","fleet","data"].includes(t))t="ringkasan";S.tab=t;
+function setTab(t){if(!["ringkasan","simulasi","jarak","fleet","aktual","data"].includes(t))t="ringkasan";S.tab=t;
   document.querySelectorAll(".view").forEach(v=>v.hidden=v.dataset.view!==t);
   document.querySelectorAll("nav.tabs a").forEach(a=>{if(a.dataset.tab===t)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
   renderAll();}
@@ -576,7 +753,45 @@ function renderSim(){
    <tr class="sec"><td colspan="3">Target margin ${pct(S.params.targetMargin)}</td></tr>
    <tr><td>Biaya maksimum agar target tercapai</td><td class="r">${f0(r.maxCost)}</td><td class="r">${f0(r.prod?r.maxCost/r.prod:null)}</td></tr>
    <tr><td>Ruang biaya tersisa (+) / kelebihan (−)</td><td class="r">${f0(r.maxCost!=null?r.maxCost-r.cost:null)}</td><td class="r">${f0(r.prod&&r.maxCost!=null?(r.maxCost-r.cost)/r.prod:null)}</td></tr></tbody>`;
+  renderSens(s,r);
 }
+
+// ---------- Sensitivitas ----------
+function sensFactors(s,base){
+  const p=Math.max(1,+$("sens-pct").value||10)/100,dh=Math.max(0.5,+$("sens-ewh").value||1),dd=Math.max(100,+$("sens-dist").value||500);
+  const c=(mod,opt,d)=>calc(Object.assign({},s,mod),d,opt);
+  const F=[];
+  F.push({name:`Harga solar ±${nf0.format(p*100)}%`,lo:c({},{fuel:1-p}),hi:c({},{fuel:1+p}),loL:`−${nf0.format(p*100)}%`,hiL:`+${nf0.format(p*100)}%`});
+  F.push({name:`Biaya RM ±${nf0.format(p*100)}%`,lo:c({},{rm:1-p}),hi:c({},{rm:1+p}),loL:`−${nf0.format(p*100)}%`,hiL:`+${nf0.format(p*100)}%`});
+  F.push({name:`Depresiasi / owning ±${nf0.format(p*100)}%`,lo:c({},{dep:1-p}),hi:c({},{dep:1+p}),loL:`−${nf0.format(p*100)}%`,hiL:`+${nf0.format(p*100)}%`});
+  F.push({name:`Biaya MP ±${nf0.format(p*100)}%`,lo:c({},{mp:1-p}),hi:c({},{mp:1+p}),loL:`−${nf0.format(p*100)}%`,hiL:`+${nf0.format(p*100)}%`});
+  if(isNum(base.pty))F.push({name:`Produktivitas loader ±${nf0.format(p*100)}%`,lo:c({pty:base.pty*(1-p)}),hi:c({pty:base.pty*(1+p)}),loL:f0(base.pty*(1-p))+" BCM/jam",hiL:f0(base.pty*(1+p))+" BCM/jam"});
+  F.push({name:`Plan EWH ±${nf1.format(dh)} jam`,lo:c({ewh:Math.max(0.5,base.ewh-dh)}),hi:c({ewh:base.ewh+dh}),loL:f1(Math.max(0.5,base.ewh-dh))+" jam",hiL:f1(base.ewh+dh)+" jam"});
+  if(isNum(base.need))F.push({name:"Jumlah hauler ±1 unit",lo:c({haulQty:Math.max(0,base.need-1)}),hi:c({haulQty:base.need+1}),loL:f0(Math.max(0,base.need-1))+" unit",hiL:f0(base.need+1)+" unit"});
+  const e=mfEntry(s);if(e){const dl=Math.max(e.dist[0],base.dist-dd),dhh=Math.min(e.dist[e.dist.length-1],base.dist+dd);
+    F.push({name:`Jarak ±${nf0.format(dd)} m`,lo:c({},null,dl),hi:c({},null,dhh),loL:f0(dl)+" m",hiL:f0(dhh)+" m"});}
+  F.forEach(f=>{f.dLo=(f.lo.cpb??base.cpb)-base.cpb;f.dHi=(f.hi.cpb??base.cpb)-base.cpb;f.span=Math.abs(f.dHi-f.dLo);});
+  return F.sort((a,b)=>b.span-a.span);
+}
+function renderSens(s,base){
+  if(!base.ok){$("sens-chart").innerHTML=`<div class="empty">Sensitivitas muncul setelah skenario bisa dihitung.</div>`;$("sens-table").innerHTML="";return;}
+  const F=sensFactors(s,base);
+  const W=900,rowH=34,ml=250,mr=40,mt=26,H=mt+F.length*rowH+30;
+  const m=Math.max(...F.flatMap(f=>[Math.abs(f.dLo),Math.abs(f.dHi)]),1)*1.15;
+  const cx=ml+(W-ml-mr)/2,sc=v=>v/m*(W-ml-mr)/2;let g="";
+  const step=niceStep(m/3);for(let v=-Math.floor(m/step)*step;v<=m;v+=step){const x=cx+sc(v);g+=`<line x1="${x}" x2="${x}" y1="${mt-8}" y2="${H-26}" stroke="var(--line)"/><text x="${x}" y="${H-10}" font-size="11" text-anchor="middle" fill="var(--muted)" font-family="var(--f-mono)">${v>0?"+":""}${nf0.format(v)}</text>`;}
+  g+=`<line x1="${cx}" x2="${cx}" y1="${mt-12}" y2="${H-26}" stroke="var(--ink)" stroke-width="2"/><text x="${cx}" y="${mt-14}" font-size="11.5" text-anchor="middle" fill="var(--ink)" font-weight="600">${f0(base.cpb)} Rp/BCM</text>`;
+  F.forEach((f,i)=>{const y=mt+i*rowH;
+    g+=`<text x="${ml-12}" y="${y+19}" font-size="12.5" text-anchor="end" fill="var(--ink)">${esc(f.name)}</text>`;
+    [[f.dLo,f.loL,f.lo],[f.dHi,f.hiL,f.hi]].forEach(([d,lab,r])=>{if(!isNum(d)||Math.abs(d)<0.5)return;const x0=d<0?cx+sc(d):cx,w=Math.abs(sc(d));
+      g+=`<rect x="${x0}" y="${y+6}" width="${w}" height="20" rx="3" fill="${d<0?"var(--good)":"var(--bad)"}" opacity=".85" data-tip="${esc(f.name)} → ${esc(lab)}<br><b>${f0(r.cpb)} Rp/BCM</b> (${d>0?"+":""}${f0(d)})<br>margin ${pct(r.mPct)}"/>`;
+      g+=`<text x="${d<0?x0-5:x0+w+5}" y="${y+20}" font-size="11" text-anchor="${d<0?"end":"start"}" fill="var(--muted)" font-family="var(--f-mono)">${d>0?"+":""}${nf0.format(d)}</text>`;});});
+  $("sens-chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafik sensitivitas Cost per BCM">${g}</svg>`;
+  $("sens-table").innerHTML=`<thead><tr><th>Faktor</th><th class="r">Turun ke</th><th class="r">Cost/BCM</th><th class="r">Δ Rp/BCM</th><th class="r">Naik ke</th><th class="r">Cost/BCM</th><th class="r">Δ Rp/BCM</th><th class="r">Δ biaya per hari (maks)</th></tr></thead><tbody>`+
+    F.map(f=>`<tr><td><b>${esc(f.name)}</b></td><td class="r">${esc(f.loL)}</td><td class="r">${f0(f.lo.cpb)}</td><td class="r" style="color:${f.dLo<0?"var(--good)":"var(--bad)"}">${f.dLo>0?"+":""}${f0(f.dLo)}</td><td class="r">${esc(f.hiL)}</td><td class="r">${f0(f.hi.cpb)}</td><td class="r" style="color:${f.dHi<0?"var(--good)":"var(--bad)"}">${f.dHi>0?"+":""}${f0(f.dHi)}</td><td class="r">±${rpS(Math.max(Math.abs((f.hi.cost??0)-base.cost),Math.abs((f.lo.cost??0)-base.cost)))}</td></tr>`).join("")+
+    `</tbody>`;
+}
+["sens-pct","sens-ewh","sens-dist"].forEach(id=>$(id).addEventListener("change",()=>{const s=curSc();if(s&&S.data)renderSens(s,calc(s));}));
 $("sc-chips").addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(!b)return;S.sel=b.dataset.id;renderSim();});
 function upd(fn){const s=curSc();if(!s)return;fn(s);persist();renderSim();}
 const numOrNull=v=>v===""||v==null?null:(isFinite(+v)?+v:null);
@@ -703,6 +918,144 @@ $("fleet-best").addEventListener("click",e=>{const b=e.target.closest("[data-mk]
   const s={id:uid(),name:"",material:FL.mat,loader:l,hauler:h,dist:+d,ewh:+FL.ewh||0,cn:"",dozer:FL.dozer,dozerQty:+FL.dqty||0,dozerEwh:null,haulQty:null,pty:null};
   autoName(s);S.scenarios.push(s);S.sel=s.id;S.distSel=null;persist();toast("Skenario "+s.name+" ditambahkan");location.hash="simulasi";});
 
+// ---------- Plan vs Actual ----------
+// S.actuals = { "YYYY-MM": {rows:[...], fileName, importedAt} }
+const PA={period:"",pit:"",ewh:null,dozer:null,dqty:null};
+const COMP=[["fuel","BBM"],["rm","Repair & maint."],["mp","Man power"],["dep","Depresiasi"],["other","Lain-lain"]];
+function toPeriod(v){
+  if(v==null||v==="")return null;
+  if(isNum(v)){if(v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}return null;}
+  if(v instanceof Date)return v.getFullYear()+"-"+String(v.getMonth()+1).padStart(2,"0");
+  const s=String(v).trim();let m=s.match(/^(\d{4})[-\/.](\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0");
+  m=s.match(/^(\d{1,2})[-\/.](\d{4})$/);if(m)return m[2]+"-"+m[1].padStart(2,"0");
+  const mon=["JAN","FEB","MAR","APR","MEI","JUN","JUL","AGU","SEP","OKT","NOV","DES"],mon2=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+  m=s.toUpperCase().match(/^([A-Z]{3})[A-Z]*[\s\-\/]+(\d{4})$/);if(m){let i=mon.indexOf(m[1]);if(i<0)i=mon2.indexOf(m[1]);if(i>=0)return m[2]+"-"+String(i+1).padStart(2,"0");}
+  return null;
+}
+const PA_COLS=[["period",/PERIODE|BULAN|PERIOD/],["pit",/^PIT|LOKASI/],["material",/MATERIAL/],["loader",/LOADER|EXCAVATOR/],["hauler",/HAULER|DUMP|TRUCK/],["dist",/JARAK|DISTANCE/],
+  ["bcm",/BCM|VOLUME/],["fuelL",/SOLAR|LITER|FUEL \(L/],["fuel",/BBM|BIAYA FUEL|FUEL COST/],["rm",/(^|[^A-Z])RM([^A-Z]|$)|REPAIR|MAINT/],["mp",/(^|[^A-Z])MP([^A-Z]|$)|MAN ?POWER|GAJI/],["dep",/DEPRE|OWNING/],["other",/LAIN|OTHER/],["note",/CATATAN|NOTE|KET/]];
+function parseActual(wb){
+  for(const name of wb.SheetNames){
+    const ws=wb.Sheets[name];if(!ws["!ref"])continue;
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null,blankrows:false});
+    for(let r=0;r<Math.min(rows.length,15);r++){
+      const hdr=(rows[r]||[]).map(norm);const col={};
+      PA_COLS.forEach(([k,re])=>{const i=hdr.findIndex((h,ci)=>h&&re.test(h)&&!Object.values(col).includes(ci));if(i>=0)col[k]=i;});
+      // kolom BBM jangan tertukar dengan solar (liter)
+      if(col.bcm==null||col.loader==null||col.hauler==null||col.period==null)continue;
+      const out=[],bad=[];
+      for(let k=r+1;k<rows.length;k++){const row=rows[k]||[];const g=c=>col[c]!=null?row[col[c]]:null;
+        const bcm=toNum(g("bcm"));if(!(bcm>0))continue;
+        const p=toPeriod(g("period"));if(!p){bad.push(k+1);continue;}
+        const x={period:p,pit:String(g("pit")??"").trim()||"-",material:norm(g("material")||"OB"),loader:String(g("loader")??"").trim(),hauler:String(g("hauler")??"").trim(),dist:toNum(g("dist"))||0,bcm,
+          fuelL:toNum(g("fuelL"))||0,fuel:toNum(g("fuel"))||0,rm:toNum(g("rm"))||0,mp:toNum(g("mp"))||0,dep:toNum(g("dep"))||0,other:toNum(g("other"))||0,note:String(g("note")??"").trim()};
+        if(x.material==="COAL")x.material="CG";out.push(x);}
+      return{sheet:name,rows:out,bad,cols:Object.keys(col)};
+    }
+  }
+  return null;
+}
+async function importActual(file){
+  if(typeof XLSX==="undefined"){$("libfail").hidden=false;return;}
+  const st=$("pa-status");st.innerHTML=`<div class="muted small">Membaca ${esc(file.name)}…</div>`;
+  try{const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});const res=parseActual(wb);
+    if(!res){st.innerHTML=`<div class="banner bad">Tidak menemukan tabel aktual. Pastikan ada kolom Periode, Loader, Hauler dan BCM (pakai template).</div>`;return;}
+    if(!res.rows.length){st.innerHTML=`<div class="banner bad">Sheet "${esc(res.sheet)}" terbaca, tapi tidak ada baris dengan BCM &gt; 0.</div>`;return;}
+    const byP={};res.rows.forEach(x=>(byP[x.period]=byP[x.period]||[]).push(x));
+    for(const [p,rows] of Object.entries(byP)){S.actuals[p]={rows,fileName:file.name,importedAt:Date.now()};await Cloud.saveActual(p,S.actuals[p]);}
+    await store.set("actuals",S.actuals);
+    PA.period=Object.keys(byP).sort().pop();
+    st.innerHTML=`<div class="banner"><span>Terbaca ${res.rows.length} baris dari sheet "${esc(res.sheet)}" untuk periode ${Object.keys(byP).sort().map(periodName).join(", ")}.${res.bad.length?` ${res.bad.length} baris dilewati karena periodenya tidak terbaca (baris ${res.bad.slice(0,8).join(", ")}).`:""}</span></div>`;
+    renderPA();toast("Data aktual diimpor");
+  }catch(err){console.error(err);st.innerHTML=`<div class="banner bad">Gagal membaca file: ${esc(err.message||err)}</div>`;}
+}
+function periodName(p){if(!p)return"";const[y,m]=p.split("-");return new Date(+y,+m-1,1).toLocaleDateString("id-ID",{month:"short",year:"numeric"});}
+function planFor(x){
+  const s={material:x.material,loader:x.loader,hauler:x.hauler,dist:x.dist,ewh:+PA.ewh||0,dozer:PA.dozer,dozerQty:+PA.dqty||0,dozerEwh:null,haulQty:null,pty:null};
+  if(!mfEntry(s))return null;const r=calc(s);if(!r.ok)return null;
+  const per=k=>k==="fuel"?(r.L.fuelCost+r.H.fuelCost+r.Z.fuelCost)/r.prod:k==="other"?0:(r.L[k]+r.H[k]+r.Z[k])/r.prod;
+  const o={cpb:r.cpb,fr:(r.L.fuelL+r.H.fuelL+r.Z.fuelL)/r.prod,need:r.need,usedDist:r.usedDist};COMP.forEach(([k])=>o[k]=per(k));return o;
+}
+function paRows(){
+  const out=[];Object.entries(S.actuals).forEach(([p,v])=>v.rows.forEach(x=>{if((PA.period&&PA.period!=="*"&&p!==PA.period)||(PA.pit&&x.pit!==PA.pit))return;
+    const act=COMP.reduce((s,[k])=>s+(x[k]||0),0);const pl=S.data?planFor(x):null;
+    out.push({x,act,acpb:act/x.bcm,pl,pcost:pl?pl.cpb*x.bcm:null});}));
+  return out;
+}
+function paAgg(rows){const a={bcm:0,act:0,pcost:0,pbcm:0,fuelL:0,comp:{},pcomp:{}};COMP.forEach(([k])=>{a.comp[k]=0;a.pcomp[k]=0;});
+  rows.forEach(r=>{a.bcm+=r.x.bcm;a.act+=r.act;a.fuelL+=r.x.fuelL;COMP.forEach(([k])=>a.comp[k]+=r.x[k]||0);
+    if(r.pl){a.pbcm+=r.x.bcm;a.pcost+=r.pcost;COMP.forEach(([k])=>a.pcomp[k]+=r.pl[k]*r.x.bcm);a.pfuelL=(a.pfuelL||0)+r.pl.fr*r.x.bcm;a.actP=(a.actP||0)+r.act;a.fuelLP=(a.fuelLP||0)+r.x.fuelL;}});
+  a.acpb=a.bcm?a.act/a.bcm:null;a.pcpb=a.pbcm?a.pcost/a.pbcm:null;a.acpbP=a.pbcm?(a.actP||0)/a.pbcm:null;return a;}
+function varPill(v,plan){if(!isNum(v)||!isNum(plan)||!plan)return`<span class="pill none">Plan tidak tersedia</span>`;const r=v/plan;
+  if(r<=0)return`<span class="pill good">Sesuai / di bawah plan</span>`;if(r<=0.05)return`<span class="pill warn">Lebih ≤5%</span>`;return`<span class="pill bad">Lebih ${nf1.format(r*100)}%</span>`;}
+function renderPA(){
+  const ref=S.scenarios[0]||{};if(PA.ewh==null)PA.ewh=ref.ewh||15;if(PA.dozer==null)PA.dozer=ref.dozer||"";if(PA.dqty==null)PA.dqty=ref.dozerQty||0;
+  const set=(id,v)=>{const el=$(id);if(document.activeElement!==el)el.value=v;};set("pa-ewh",PA.ewh);set("pa-dozer",PA.dozer);set("pa-dqty",PA.dqty);
+  const periods=Object.keys(S.actuals).sort();
+  if(PA.period!=="*"&&!periods.includes(PA.period))PA.period=periods[periods.length-1]||"";
+  $("pa-period").innerHTML=periods.length?`<option value="*"${PA.period==="*"?" selected":""}>Semua periode</option>`+periods.slice().reverse().map(p=>`<option value="${p}"${p===PA.period?" selected":""}>${periodName(p)}</option>`).join(""):`<option value="">–</option>`;
+  const pits=[...new Set(Object.values(S.actuals).flatMap(v=>v.rows.map(x=>x.pit)))].sort();if(PA.pit&&!pits.includes(PA.pit))PA.pit="";
+  $("pa-pit").innerHTML=`<option value="">Semua pit</option>`+pits.map(p=>`<option${p===PA.pit?" selected":""}>${esc(p)}</option>`).join("");
+  // periode tersimpan
+  $("pa-periods").innerHTML=periods.length?`<thead><tr><th>Periode</th><th class="r">Baris</th><th class="r">BCM</th><th>Sumber</th><th></th></tr></thead><tbody>`+periods.slice().reverse().map(p=>{const v=S.actuals[p];
+    return`<tr><td><b>${periodName(p)}</b></td><td class="r">${v.rows.length}</td><td class="r">${f0(v.rows.reduce((s,x)=>s+x.bcm,0))}</td><td class="small muted">${esc(v.fileName||"")}<br>${v.importedAt?new Date(v.importedAt).toLocaleString("id-ID"):""}${v.by?" · "+esc(v.by):""}</td><td class="r"><button type="button" class="ghost danger" data-delp="${p}">Hapus</button></td></tr>`;}).join("")+"</tbody>"
+    :`<tbody><tr><td class="muted">Belum ada periode.</td></tr></tbody>`;
+  const has=periods.length>0;$("pa-empty").hidden=has;["pa-kpis","pa-charts","pa-detail"].forEach(id=>$(id).hidden=!has);
+  if(!has)return;
+  if(!S.data){$("pa-kpis").innerHTML=`<div class="kpi"><span class="label">Plan belum bisa dihitung</span><span class="foot">Impor raw data budget dulu di menu Data &amp; Parameter.</span></div>`;}
+  const rows=paRows();const a=paAgg(rows);const varPB=a.pcpb!=null?a.acpbP-a.pcpb:null;const varTot=a.pbcm?(a.actP||0)-a.pcost:null;
+  const frA=a.bcm?a.fuelL/a.bcm:null,frP=a.pbcm&&a.pfuelL?a.pfuelL/a.pbcm:null;
+  if(S.data)$("pa-kpis").innerHTML=`<div class="kpi lead"><span class="label">Actual Cost/BCM</span><span class="big">${f0(a.acpb)} <small>Rp/BCM</small></span><span class="foot">${varPill(varPB,a.pcpb)}</span></div>
+    <div class="kpi"><span class="label">Plan Cost/BCM</span><span class="big">${f0(a.pcpb)} <small>Rp/BCM</small></span><span class="foot">fleet &amp; jarak yang sama · EWH ${f1(+PA.ewh)} jam</span></div>
+    <div class="kpi"><span class="label">Varians</span><span class="big" style="color:${varPB>0?"var(--bad)":"var(--good)"}">${varPB>0?"+":""}${f0(varPB)} <small>Rp/BCM</small></span><span class="foot">${varTot>0?"Lebih boros ":"Lebih hemat "}${rpS(Math.abs(varTot))} dari plan</span></div>
+    <div class="kpi"><span class="label">Volume aktual</span><span class="big">${f0(a.bcm)} <small>BCM</small></span><span class="foot">fuel ratio ${frA!=null?nf2.format(frA):"–"} L/BCM (plan ${frP!=null?nf2.format(frP):"–"})${a.pbcm<a.bcm?` · ${f0(a.bcm-a.pbcm)} BCM tanpa plan`:""}</span></div>`;
+  // komponen
+  const comps=COMP.map(([k,l])=>({k,l,p:a.pbcm?a.pcomp[k]/a.pbcm:0,ac:a.bcm?a.comp[k]/a.bcm:0}));
+  const W=560,rowH=46,ml=120,mr=70,mt=8,H=mt+comps.length*rowH+24;const mx=Math.max(...comps.flatMap(c=>[c.p,c.ac]),1)*1.1;const x=v=>ml+v/mx*(W-ml-mr);
+  let g="";comps.forEach((c,i)=>{const y=mt+i*rowH;const d=c.ac-c.p;
+    g+=`<text x="${ml-10}" y="${y+22}" font-size="12.5" text-anchor="end" fill="var(--ink)">${esc(c.l)}</text>`;
+    g+=`<rect x="${ml}" y="${y+4}" width="${Math.max(0,x(c.p)-ml)}" height="15" rx="2" fill="var(--line-plan)" data-tip="${esc(c.l)} plan: <b>${f0(c.p)} Rp/BCM</b>"/>`;
+    g+=`<rect x="${ml}" y="${y+21}" width="${Math.max(0,x(c.ac)-ml)}" height="15" rx="2" fill="var(--accent)" data-tip="${esc(c.l)} actual: <b>${f0(c.ac)} Rp/BCM</b>"/>`;
+    g+=`<text x="${Math.max(x(c.p),x(c.ac))+6}" y="${y+25}" font-size="11.5" font-weight="600" fill="${d>0.5?"var(--bad)":"var(--good)"}" font-family="var(--f-mono)">${d>0?"+":""}${f0(d)}</text>`;});
+  $("pa-comp").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Plan vs actual per komponen">${g}</svg>`;
+  // tren
+  const allP=periods.filter(p=>p);const tr=allP.map(p=>{const save=PA.period;PA.period=p;const rr=paRows();PA.period=save;const ag=paAgg(rr);return{p,a:ag.acpbP,pl:ag.pcpb};}).filter(t=>isNum(t.a)&&isNum(t.pl));
+  if(tr.length<2)$("pa-trend").innerHTML=`<div class="empty">Tren muncul setelah ada minimal 2 bulan data aktual.</div>`;
+  else{const W2=560,H2=260,l=56,r2=16,t2=14,b2=34;let hi=Math.max(...tr.flatMap(t=>[t.a,t.pl]))*1.1,lo=Math.min(...tr.flatMap(t=>[t.a,t.pl]))*0.9;const st=niceStep((hi-lo)/4);lo=Math.floor(lo/st)*st;hi=Math.ceil(hi/st)*st;
+    const X=i=>l+(tr.length===1?(W2-l-r2)/2:i*(W2-l-r2)/(tr.length-1)),Y=v=>t2+(H2-t2-b2)*(1-(v-lo)/(hi-lo));let g2="";
+    for(let v=lo;v<=hi+1e-6;v+=st)g2+=`<line x1="${l}" x2="${W2-r2}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${l-6}" y="${Y(v)+4}" font-size="11" text-anchor="end" fill="var(--muted)" font-family="var(--f-mono)">${nf0.format(v/1000)}rb</text>`;
+    tr.forEach((t,i)=>g2+=`<text x="${X(i)}" y="${H2-12}" font-size="11" text-anchor="${i===0?"start":i===tr.length-1?"end":"middle"}" fill="var(--muted)">${periodName(t.p)}</text>`);
+    const path=k=>tr.map((t,i)=>(i?"L":"M")+X(i)+" "+Y(t[k])).join(" ");
+    g2+=`<path d="${path("pl")}" fill="none" stroke="var(--line-plan)" stroke-width="2.2" stroke-dasharray="6 4"/><path d="${path("a")}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+    tr.forEach((t,i)=>g2+=`<circle cx="${X(i)}" cy="${Y(t.a)}" r="4.5" fill="var(--accent)" data-tip="${periodName(t.p)}<br>actual <b>${f0(t.a)}</b> · plan ${f0(t.pl)} Rp/BCM"/>`);
+    $("pa-trend").innerHTML=`<svg viewBox="0 0 ${W2} ${H2}" role="img" aria-label="Tren plan vs actual">${g2}</svg>`;}
+  // tabel
+  const sorted=rows.slice().sort((p,q)=>((q.pl?q.act-q.pcost:-1e18)-(p.pl?p.act-p.pcost:-1e18)));
+  $("pa-table").innerHTML=`<thead><tr><th>Periode</th><th>Pit</th><th>Fleet</th><th class="r">Jarak</th><th class="r">BCM</th><th class="r">Plan /BCM</th><th class="r">Actual /BCM</th><th class="r">Varians /BCM</th><th class="r">Varians total</th><th>Penyimpangan terbesar</th><th>Status</th></tr></thead><tbody>`+
+    sorted.map(r=>{const v=r.pl?r.acpb-r.pl.cpb:null;let worst="–";if(r.pl){const d=COMP.map(([k,l])=>({l,d:(r.x[k]||0)/r.x.bcm-r.pl[k]})).sort((p,q)=>q.d-p.d)[0];if(d.d>0)worst=`${esc(d.l)} +${f0(d.d)}`;else worst=`<span class="muted">tidak ada</span>`;}
+      return`<tr><td>${periodName(r.x.period)}</td><td>${esc(r.x.pit)}</td><td><b>${esc(r.x.loader)} × ${esc(r.x.hauler)}</b> <span class="small muted">${esc(r.x.material)}</span></td><td class="r">${f0(r.x.dist)}</td><td class="r">${f0(r.x.bcm)}</td><td class="r">${f0(r.pl?.cpb)}</td><td class="r"><b>${f0(r.acpb)}</b></td><td class="r" style="color:${v>0?"var(--bad)":"var(--good)"}">${v!=null?(v>0?"+":"")+f0(v):"–"}</td><td class="r">${r.pl?(r.act-r.pcost>0?"+":"")+rpS(r.act-r.pcost):"–"}</td><td>${worst}</td><td>${varPill(v,r.pl?.cpb)}</td></tr>`;}).join("")+"</tbody>";
+}
+$("pa-period").addEventListener("change",e=>{PA.period=e.target.value;renderPA();});
+$("pa-pit").addEventListener("change",e=>{PA.pit=e.target.value;renderPA();});
+$("pa-ewh").addEventListener("change",e=>{PA.ewh=+e.target.value||0;renderPA();});
+$("pa-dozer").addEventListener("change",e=>{PA.dozer=e.target.value.trim();renderPA();});
+$("pa-dqty").addEventListener("change",e=>{PA.dqty=+e.target.value||0;renderPA();});
+$("file-pa").addEventListener("change",e=>{const f=e.target.files[0];if(f)importActual(f);e.target.value="";});
+{const d=$("pa-drop");["dragenter","dragover"].forEach(t=>d.addEventListener(t,e=>{e.preventDefault();d.classList.add("over");}));["dragleave","drop"].forEach(t=>d.addEventListener(t,e=>{e.preventDefault();d.classList.remove("over");}));d.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)importActual(f);});}
+$("pa-periods").addEventListener("click",async e=>{const b=e.target.closest("[data-delp]");if(!b)return;
+  if(!b.classList.contains("confirm")){b.classList.add("confirm");b.textContent="Yakin?";setTimeout(()=>{if(b.isConnected){b.classList.remove("confirm");b.textContent="Hapus";}},3000);return;}
+  const p=b.dataset.delp;delete S.actuals[p];await Cloud.deleteActual(p);await store.set("actuals",S.actuals);renderPA();toast("Periode "+periodName(p)+" dihapus");});
+$("btn-pa-template").addEventListener("click",()=>{
+  if(typeof XLSX==="undefined")return toast("Pembaca Excel belum dimuat");
+  const now=new Date();const per=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+  const head=["Periode (YYYY-MM)","Pit","Material","Loader (EGI)","Hauler (EGI)","Jarak (m)","Volume (BCM)","Solar (liter)","Biaya BBM (Rp)","Biaya RM (Rp)","Biaya MP (Rp)","Depresiasi (Rp)","Biaya lain (Rp)","Catatan"];
+  const fleets=[...new Map(S.scenarios.map(s=>[s.loader+"|"+s.hauler+"|"+s.material,s])).values()];
+  const aoa=[head].concat(fleets.map(s=>[per,"",s.material,s.loader,s.hauler,s.dist,null,null,null,null,null,null,null,""]));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=head.map((h,i)=>({wch:i<5?16:15}));
+  const guide=[["Petunjuk pengisian data aktual"],[""],["1. Satu baris = satu bulan × satu pit × satu fleet (loader × hauler)."],["2. Periode ditulis YYYY-MM, misalnya "+per+"."],["3. Loader dan Hauler memakai nama EGI yang sama dengan Match Factor (misalnya PC1250, 777-E)."],["4. Material: OB, TS, MD, atau CG."],["5. Jarak = jarak angkut rata-rata bulan itu (meter)."],["6. Biaya per komponen dalam Rupiah untuk bulan itu, termasuk biaya dozer pendukung."],["7. Baris dengan Volume (BCM) kosong atau 0 dilewati."],["8. Mengimpor bulan yang sudah ada akan menggantikan data bulan tersebut."]];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Aktual");XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(guide),"Petunjuk");
+  XLSX.writeFile(wb,"Template Aktual Cost per BCM.xlsx");});
+
 // ---------- Data & parameter ----------
 const PARDEF=[["fuelPrice","Harga solar (Rp/liter)","Rate Cost Fuel"],["waste","Tarif waste removal (Rp/BCM, ≤ jarak dasar)","OB & TS"],["wasteOver","Overdistance waste (Rp/BCM/100 m)",""],["mud","Tarif mud handling (Rp/BCM)","MD"],["mudOver","Overdistance mud (Rp/BCM/100 m)",""],["coalGet","Coal getting (Rp/ton)","CG"],["coalHaul","Coal hauling (Rp/ton, ≤ jarak dasar)",""],["coalOver","Overdistance coal (Rp/ton/100 m)",""],["baseDist","Jarak dasar tarif (m)","overdistance dihitung di atas jarak ini"],["targetMargin","Target margin (%)",""],["mpRate","Biaya MP (Rp/jam/unit)","auto dari P_MP"],["rmMonths","Pembagi bulan RM aktual","auto = bulan berisi data"],["coalDensity","Densitas coal (ton/BCM)","konversi volume BCM ke ton untuk tarif coal"],["dozerRatio","EWH dozer ÷ EWH loader","default Excel 0,5"]];
 function renderData(){
@@ -751,7 +1104,8 @@ async function importFile(file){
     if(D.sim&&D.sim.params){S.excelParams=D.sim.params;Object.keys(D.sim.params).forEach(k=>{if(S.params[k]==null)S.params[k]=D.sim.params[k];});}
     if(takeSim){S.params={...DEFAULT_PARAMS,...D.sim.params};if(D.sim.scenarios.length){S.scenarios=D.sim.scenarios;S.sel=S.scenarios[0].id;S.distSel=null;}}
     await store.set("data",D);persist();buildIndex();renderAll();
-    toast("Raw data diperbarui dari "+file.name+(takeSim?" · skenario & parameter ikut diambil":""));
+    if(Cloud.canWrite())await Cloud.saveRaw(D);
+    toast("Raw data diperbarui dari "+file.name+(takeSim?" · skenario & parameter ikut diambil":"")+(Cloud.canWrite()?" · tersimpan ke database tim":Cloud.on?" · hanya di browser ini (akses viewer)":""));
   }catch(err){console.error(err);$("imp-status").innerHTML=`<div class="banner bad">Gagal membaca file: ${esc(err.message||err)}. Pastikan file berformat .xlsx dan tidak sedang dikunci.</div>`;}
 }
 $("file-xlsx").addEventListener("change",e=>{const f=e.target.files[0];if(f)importFile(f);e.target.value="";});
@@ -760,18 +1114,21 @@ const drop=$("drop");["dragenter","dragover"].forEach(t=>drop.addEventListener(t
 drop.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)importFile(f);});
 
 // backup
-$("btn-backup").addEventListener("click",()=>{const b={app:"simulator-cost-bcm",version:1,savedAt:new Date().toISOString(),data:S.data,params:S.params,excelParams:S.excelParams,scenarios:S.scenarios,overrides:S.overrides};
+$("btn-backup").addEventListener("click",()=>{const b={app:"simulator-cost-bcm",version:2,savedAt:new Date().toISOString(),data:S.data,params:S.params,excelParams:S.excelParams,scenarios:S.scenarios,overrides:S.overrides,actuals:S.actuals};
   download("backup-cost-bcm_"+new Date().toISOString().slice(0,10)+".json",new Blob([JSON.stringify(b)],{type:"application/json"}));});
 $("file-json").addEventListener("change",async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;
   try{const b=JSON.parse(await f.text());if(b.app!=="simulator-cost-bcm")throw new Error("bukan file backup aplikasi ini");
-    S.data=b.data||null;S.params={...DEFAULT_PARAMS,...(b.params||{})};S.excelParams=b.excelParams||null;S.scenarios=b.scenarios||[];S.overrides=b.overrides||{};S.sel=S.scenarios[0]?.id||null;S.distSel=null;
-    await store.set("data",S.data);persist();buildIndex();renderAll();toast("Backup dipulihkan");}
+    S.data=b.data||null;S.params={...DEFAULT_PARAMS,...(b.params||{})};S.excelParams=b.excelParams||null;S.scenarios=b.scenarios||[];S.overrides=b.overrides||{};S.actuals=b.actuals||{};S.sel=S.scenarios[0]?.id||null;S.distSel=null;
+    await store.set("data",S.data);await store.set("actuals",S.actuals);persist();buildIndex();renderAll();
+    if(Cloud.canWrite()){await Cloud.saveRaw(S.data);for(const[p,v]of Object.entries(S.actuals))await Cloud.saveActual(p,v);}
+    toast("Backup dipulihkan"+(Cloud.canWrite()?" dan disimpan ke database tim":""));}
   catch(err){toast("Gagal memulihkan: "+err.message);}});
 $("btn-wipe").addEventListener("click",async e=>{const b=e.currentTarget;
   if(!b.classList.contains("confirm")){b.classList.add("confirm");b.textContent="Yakin? Semua data & skenario hilang";setTimeout(()=>{b.classList.remove("confirm");b.textContent="Hapus semua data";},4000);return;}
   b.classList.remove("confirm");b.textContent="Hapus semua data";
-  for(const k of["data","params","scenarios","overrides","excelParams"])await store.del(k);
-  S.data=null;S.params={...DEFAULT_PARAMS};S.excelParams=null;S.scenarios=[];S.overrides={};S.sel=null;IDX=null;renderAll();toast("Semua data dihapus dari browser ini");});
+  for(const k of["data","params","scenarios","overrides","excelParams","actuals"])await store.del(k);
+  if(Cloud.on){toast("Salinan di browser ini dihapus. Data di database tim tidak ikut terhapus.");await Cloud.load();return;}
+  S.data=null;S.params={...DEFAULT_PARAMS};S.excelParams=null;S.scenarios=[];S.overrides={};S.actuals={};S.sel=null;IDX=null;renderAll();toast("Semua data dihapus dari browser ini");});
 
 // export xlsx
 $("btn-export-xlsx").addEventListener("click",()=>{
@@ -798,10 +1155,11 @@ document.addEventListener("mousemove",e=>{const t=e.target.closest&&e.target.clo
 (async()=>{
   if(typeof XLSX==="undefined")$("libfail").hidden=false;
   S.data=await store.get("data")||null;S.params={...DEFAULT_PARAMS,...(await store.get("params")||{})};S.excelParams=await store.get("excelParams")||null;
-  S.scenarios=await store.get("scenarios")||[];S.overrides=await store.get("overrides")||{};S.sel=S.scenarios[0]?.id||null;
+  S.scenarios=await store.get("scenarios")||[];S.overrides=await store.get("overrides")||{};S.actuals=await store.get("actuals")||{};S.sel=S.scenarios[0]?.id||null;
   buildIndex();setTab(location.hash.slice(1)||(S.data?"ringkasan":"data"));
+  await Cloud.init();
 })();
-window.__costbcm={importFile,S,calc};
+window.__costbcm={importFile,importActual,S,calc,Cloud,sensFactors,paRows,paAgg};
 })();
 </script>
 </body>
