@@ -400,7 +400,7 @@ function persist(){clearTimeout(saveT);saveT=setTimeout(()=>{store.set("params",
 
 // ================= database tim (Supabase) =================
 // Diisi setelah proyek Supabase dibuat. Bisa juga diisi lewat menu Data & Parameter → Pengaturan koneksi.
-const SB_CONFIG={url:"",key:""};
+const SB_CONFIG={url:"https://bxjeycrhouyygmoeankk.supabase.co",key:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4amV5Y3Job3V5eWdtb2VhbmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxMTkwNTAsImV4cCI6MjEwOTY5NTA1MH0.ZlNCuGusTlvALrhdmd9qnQ_yAumUcCNxH0IeZyE0vWE"};
 const Cloud={
   client:null,user:null,role:null,on:false,last:{},status:"off",msg:"",
   cfg(){try{const c=JSON.parse(localStorage.getItem("sb-config")||"null");if(c&&c.url&&c.key)return c;}catch(e){}return SB_CONFIG.url&&SB_CONFIG.key?SB_CONFIG:null;},
